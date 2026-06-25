@@ -137,9 +137,78 @@ def compute_signal_columns(df: pd.DataFrame, params: dict) -> pd.DataFrame:
     return out
 
 
+def compute_entry_candidates(df: pd.DataFrame, params: dict) -> pd.DataFrame:
+    """진입 후보 컬럼(`enter_long`, `entry_kind`)을 추가해 반환.
+
+    "무포지션이면 진입" 후보를 셋업 상태머신 1패스로 산출한다(포지션 상태 무관).
+    자체 엔진과 freqtrade 전략이 **둘 다 이 컬럼을 소비**해 진입을 일치시킨다.
+
+    상태머신 (§3.2/3.3/3.4):
+      - ENTRY_BASE(최우선) → 진입, 셋업 해제.
+      - 이전 봉에서 무장된 셋업이 delay_window 내에 발동 → 진입, 셋업 해제.
+      - base 불발한 골든크로스에서 RSI<50 → low 셋업, RSI>=70 → high 셋업 무장.
+      - 우선순위: base > delay_high > delay_low (한 봉에 동시 충족 시).
+
+    인과성: 각 봉의 후보는 과거/현재 봉만으로 결정된다(셋업은 과거 골든크로스에서
+    무장). 따라서 t시점 절단 후 계산해도 t시점 값이 불변 → 미래참조 0.
+    """
+    out = df.copy()
+    low_th = params["rsi_entry_low"]
+    dwin = params["delay_window"]
+    n = len(out)
+
+    base = out["entry_base"].to_numpy()
+    gc = out["macd_golden_cross"].to_numpy()
+    overheated = out["rsi_overheated"].to_numpy()
+    rsi = out["rsi"].to_numpy()
+    above = out["macd_above_signal"].to_numpy()
+    rsi_cross = out["rsi_cross_up_low"].to_numpy()
+    support = out["rsi_in_support_band"].to_numpy()
+    bull = out["is_bull_candle"].to_numpy()
+    hup = out["hma_uptrend"].to_numpy()
+    vok = out["volume_ok"].to_numpy()
+
+    enter = np.zeros(n, dtype=bool)
+    kind = np.array([""] * n, dtype=object)
+    setup = None  # {"kind": "low"|"high", "expires": int}
+
+    for t in range(n):
+        # 1) 기본 진입 (최우선)
+        if base[t]:
+            enter[t] = True
+            kind[t] = "base"
+            setup = None
+            continue
+        # 2) 무장된 셋업(이전 봉 무장)의 만료/발동
+        if setup is not None:
+            if t > setup["expires"]:
+                setup = None
+            elif setup["kind"] == "high" and above[t] and support[t] and bull[t] and hup[t] and vok[t]:
+                enter[t] = True
+                kind[t] = "delay_high"
+                setup = None
+                continue
+            elif setup["kind"] == "low" and above[t] and rsi_cross[t] and bull[t] and hup[t] and vok[t]:
+                enter[t] = True
+                kind[t] = "delay_low"
+                setup = None
+                continue
+        # 3) base 불발 골든크로스 → 셋업 무장
+        if gc[t]:
+            if overheated[t]:
+                setup = {"kind": "high", "expires": t + dwin}
+            elif rsi[t] < low_th:
+                setup = {"kind": "low", "expires": t + dwin}
+
+    out["enter_long"] = enter
+    out["entry_kind"] = kind
+    return out
+
+
 def add_signals(df: pd.DataFrame, params: dict) -> pd.DataFrame:
-    """편의 함수: 지표 + 신호 컬럼을 한 번에."""
-    return compute_signal_columns(compute_indicators(df, params), params)
+    """편의 함수: 지표 + 신호 + 진입후보 컬럼을 한 번에."""
+    out = compute_signal_columns(compute_indicators(df, params), params)
+    return compute_entry_candidates(out, params)
 
 
 # 엔진/테스트가 t시점 결정성을 검증할 때 비교 대상으로 쓰는 신호 컬럼들.
@@ -157,6 +226,7 @@ SIGNAL_COLUMNS = [
     "rsi_exit_below_low",
     "hist_turn_up",
     "entry_base",
+    "enter_long",
 ]
 
 

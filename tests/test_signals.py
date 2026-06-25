@@ -3,7 +3,8 @@ import numpy as np
 import pandas as pd
 
 from src import signals_core as sc
-from tests.helpers import default_params
+from src.engine import backtest as bt
+from tests.helpers import default_params, random_walk_ohlcv
 
 
 def test_wma_known_value():
@@ -49,6 +50,22 @@ def test_is_bull_candle_body_ratio():
     })
     out = sc.add_signals(df, default_params())  # min_body_ratio=0.5
     assert out["is_bull_candle"].tolist() == [True, False, False]
+
+
+def test_entry_candidates_match_reference_state_machine():
+    """compute_entry_candidates의 enter_long/entry_kind가 엔진의 기준 구현
+    (_evaluate_entry 봉단위 전이)을 연속 적용한 결과와 정확히 일치해야 한다.
+    (signals_core 추출이 동작 보존임을 강제 — freqtrade·자체엔진 단일 두뇌)."""
+    params = default_params()
+    df = sc.add_signals(random_walk_ohlcv(800, seed=42), params)
+
+    setup = None
+    for t in range(len(df)):
+        decision, setup = bt._evaluate_entry(df.iloc[t], setup, t, params)
+        ref_enter = decision is not None
+        ref_kind = decision if decision is not None else ""
+        assert bool(df.iloc[t]["enter_long"]) == ref_enter, f"enter_long 불일치 t={t}"
+        assert df.iloc[t]["entry_kind"] == ref_kind, f"entry_kind 불일치 t={t}"
 
 
 def test_volume_ok_threshold():

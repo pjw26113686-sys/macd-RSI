@@ -31,6 +31,10 @@ class BacktestResult:
     initial_capital: float
 
 
+# 아래 _evaluate_entry / _delay_*_ok 는 엔진 루프에서 더는 쓰이지 않는다(엔진은
+# signals_core.compute_entry_candidates의 enter_long을 소비). 진입 셋업 상태머신의
+# 봉단위 전이 "기준 구현"으로 남겨두고, tests/test_signals.py의 parity 테스트가
+# compute_entry_candidates와 동일성을 강제한다.
 def _delay_low_ok(row) -> bool:
     return bool(
         row["macd_above_signal"]
@@ -97,7 +101,6 @@ def run_on_signals(
 
     cash = float(initial_capital)
     position: pos.Position | None = None
-    setup = None            # {"kind": "low"|"high", "expires": int}
     pending_entry = False   # 직전 종가에서 확정된 진입을 이번 봉 시가에 체결
     pending_exit = False    # 직전 종가에서 확정된 신호청산을 이번 봉 시가에 체결
 
@@ -141,11 +144,10 @@ def run_on_signals(
             elif status == "signal_pending":
                 pending_exit = True  # 데드크로스/RSI<50 확정 → 다음 봉 시가 청산
 
-        # ---- 4) 무포지션 & 워밍업 이후: 종가 t 진입신호 평가 → 다음 봉 시가 체결 ----
-        if position is None and not pending_exit and warmup <= t < n - 1:
-            decision, setup = _evaluate_entry(row, setup, t, params)
-            if decision is not None:
-                pending_entry = True
+        # ---- 4) 무포지션 & 워밍업 이후: 종가 t의 진입후보(enter_long) → 다음 봉 시가 체결 ----
+        # enter_long은 signals_core.compute_entry_candidates가 산출(자체엔진·freqtrade 공유).
+        if position is None and not pending_exit and warmup <= t < n - 1 and bool(row["enter_long"]):
+            pending_entry = True
 
         # ---- 5) 봉별 자산 기록 (현금 + 보유평가액) ----
         equity[t] = cash + (position.qty * c if position is not None else 0.0)
