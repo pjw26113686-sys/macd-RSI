@@ -70,3 +70,38 @@ python scripts/compare_engines.py
 이 레포가 만들어진 샌드박스는 네트워크 정책으로 `api.binance.com`을 차단(403)하고
 freqtrade 설치도 무겁다. 따라서 위 명령들은 시세 접근이 가능한 환경에서 실행한다.
 전략·설정·변환기·비교 스크립트는 그 환경에서 바로 동작하도록 완성돼 있다.
+
+---
+
+## BollingerOpenBreakout (5m + 1d 멀티TF) — 백테스트 & 고도화
+
+`user_data/strategies/BollingerOpenBreakout.py`(MVP) 와 버그수정·하이퍼옵트화한
+`BollingerOpenBreakoutV2.py` 를 추가했다. 일봉 볼린저밴드 방향성 + 5m 당일 시가
+돌파 전략. 상세 검증 기록·발견 버그·로드맵은 **`docs/bollinger_backtest_report.md`**.
+
+### 외부망 차단 환경에서 백테스트(이 레포에서 실제로 검증한 방법)
+
+binance 마켓 API 가 막혀 freqtrade 가 시작조차 안 되므로, 합성 데이터 + 마켓 로딩
+몽키패치로 우회한다(성과는 무의미, **무결성/동작 검증 전용**):
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install freqtrade ta-lib
+.venv/bin/python scripts/make_synth_futures_data.py          # 합성 5m+1d 선물 데이터
+.venv/bin/python scripts/offline_freqtrade.py backtesting        -c freqtrade/config_bollinger.json -s BollingerOpenBreakoutV2 --timerange 20240120-
+.venv/bin/python scripts/offline_freqtrade.py lookahead-analysis -c freqtrade/config_bollinger.json -s BollingerOpenBreakoutV2 --timerange 20240120-20241231 --minimum-trade-amount 10
+.venv/bin/python scripts/offline_freqtrade.py recursive-analysis -c freqtrade/config_bollinger.json -s BollingerOpenBreakoutV2 --timerange 20240201-20240401
+```
+
+### 외부망 허용 환경(권장, 실데이터)
+
+```bash
+freqtrade download-data -c freqtrade/config_bollinger.json --trading-mode futures \
+    --timeframes 5m 1d --days 365
+freqtrade backtesting        -c freqtrade/config_bollinger.json -s BollingerOpenBreakoutV2
+freqtrade lookahead-analysis -c freqtrade/config_bollinger.json -s BollingerOpenBreakoutV2
+freqtrade recursive-analysis -c freqtrade/config_bollinger.json -s BollingerOpenBreakoutV2
+```
+
+검증 결과(요약): V1·V2 모두 **lookahead 편향 없음 / 재귀편향 없음**. V1 은 day_open이
+'전일'로 잡히는 버그·방향성 off-by-one·과한 필터로 거래가 거의 안 났고, V2 에서
+이를 고쳐 거래빈도를 확보하고 청산구조를 개선했다(상세: 위 리포트).

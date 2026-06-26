@@ -1,6 +1,13 @@
 # Data cache (root only — do NOT ignore src/data source package)
 /data/
 
+# freqtrade 생성물 (합성 데이터·백테스트 결과는 재생성 가능 → 커밋 제외)
+freqtrade/user_data/data/
+freqtrade/user_data/backtest_results/
+freqtrade/user_data/hyperopt_results/
+freqtrade/user_data/plot/
+freqtrade/user_data/logs/
+
 # Python
 __pycache__/
 *.py[cod]
