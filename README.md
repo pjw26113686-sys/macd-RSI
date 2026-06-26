@@ -18,23 +18,38 @@ Ross Cameron 스타일로 포장된 MACD+RSI 1시간봉 모멘텀 전략의 **�
 
 ```
 config/params.yaml      파라미터(§1) + 시장별 비용(§5) + 데이터 설정
-src/signals_core.py     [순수] 지표 + 신호 컬럼
+src/signals_core.py     [순수] 지표 + 신호 + 진입후보(enter_long) — 단일 두뇌
 src/engine/position.py  포지션 상태머신 + 체결/비용 헬퍼
 src/engine/backtest.py  이벤트 루프 (run_backtest / run_on_signals)
 src/data/{crypto,stocks,cache}.py   ccxt / yfinance 수집 + parquet 캐시
 src/metrics.py          CAGR/MDD/Sharpe/승률/실현손익비 등
 src/run.py              CLI 진입점
 tests/                  lookahead / signals / engine 검증
+freqtrade/              독립 검증용 전략·설정 (signals_core 공유 → freqtrade/README.md)
+scripts/                parquet→freqtrade 변환, 자체엔진 vs freqtrade 교차비교
 ```
 
 ## 설치 & 실행
 
 ```bash
 pip install -e .            # 또는: pip install pandas numpy pyyaml pyarrow ccxt yfinance
-pytest -q                   # 12개 테스트 (lookahead 통과 = 신호 신뢰성 게이트)
+pytest -q                   # 13개 테스트 (lookahead 통과 = 신호 신뢰성 게이트)
 
 python -m src.run --market crypto   # BTC/USDT 1h (ccxt)
 python -m src.run --market stock    # AAPL 60m (yfinance)
+```
+
+## freqtrade 독립 검증
+
+자체 엔진과 **같은 두뇌(`signals_core`)**를 쓰는 freqtrade 전략으로 미래참조를
+독립 검증한다. `signals_core.compute_entry_candidates`의 `enter_long`을 자체 엔진과
+freqtrade가 함께 소비하므로 진입이 일치한다. 절차·판정기준은 `freqtrade/README.md`.
+
+```bash
+python scripts/to_freqtrade_data.py                         # parquet → feather
+freqtrade backtesting       -c freqtrade/config.json -s RossMacdRsiStrategy
+freqtrade lookahead-analysis -c freqtrade/config.json -s RossMacdRsiStrategy  # biased 0 확인
+python scripts/compare_engines.py                           # 진입 Jaccard ≈ 1.0
 ```
 
 ## 데이터 수집 / 네트워크 주의
@@ -53,10 +68,11 @@ python -m src.run --market stock    # AAPL 60m (yfinance)
 
 ## 검증된 것 / 남은 것
 
-- ✅ `signals_core` 미래참조 0, 지표/필터 정확성 (`pytest`).
+- ✅ `signals_core` 미래참조 0, 지표/필터 정확성, 진입후보 추출 회귀안전망 (`pytest`).
 - ✅ 엔진 체결 규율: 다음 봉 시가 진입, 손절 우선, 분할익절+본전스탑.
 - ✅ 합성(random-walk) 데이터 엔드투엔드: 비용 차감 후 손실(랜덤워크 sanity).
-- ⏳ 실데이터(BTC/AAPL) 성과 판정 — 위 네트워크 제약으로 외부망 환경에서 수행 필요.
+- ✅ freqtrade 독립 검증 산출물(전략·설정·변환기·교차비교) 완성 — 실행은 외부망 환경.
+- ⏳ 실데이터(BTC/AAPL) 성과 판정 + freqtrade lookahead-analysis — 외부망 환경에서 수행.
 
 ## 비범위 (2차 백로그)
 

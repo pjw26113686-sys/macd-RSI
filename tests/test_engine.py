@@ -30,7 +30,7 @@ def test_entry_fills_next_bar_open():
     df = empty_signal_frame(20)
     df["low"] = 90.0          # swing_low 유효
     df["high"] = 101.0
-    df.loc[8, "entry_base"] = True   # 신호 봉 = 8
+    df.loc[8, "enter_long"] = True   # 신호 봉 = 8
     _set_bar(df, 9, o=100.0, h=101.0, l=99.0, c=100.0)  # 체결 봉 = 9
 
     res = backtest.run_on_signals(df, SMALL, COSTS, initial_capital=10000.0)
@@ -45,7 +45,7 @@ def test_stop_has_priority_over_target_same_bar():
     df = empty_signal_frame(20)
     df["low"] = 95.0
     df["high"] = 101.0
-    df.loc[8, "entry_base"] = True
+    df.loc[8, "enter_long"] = True
     _set_bar(df, 9, 100.0, 101.0, 99.0, 100.0)   # 진입 체결
     # 12봉: 손절(저가 80)과 목표가(고가 130) 동시 도달
     _set_bar(df, 12, 100.0, 130.0, 80.0, 100.0)
@@ -62,7 +62,7 @@ def test_partial_tp_then_breakeven_stop():
     df = empty_signal_frame(20)
     df["low"] = 98.0
     df["high"] = 101.0
-    df.loc[8, "entry_base"] = True
+    df.loc[8, "enter_long"] = True
     _set_bar(df, 9, 100.0, 101.0, 99.0, 100.0)   # 진입 (fill≈100.05)
     # entry_fill≈100.05, stop≈swing_low(98)*0.999, R≈0.0205, target≈100.05*(1+0.041)≈104.2
     _set_bar(df, 11, 102.0, 130.0, 101.0, 105.0)  # 목표가 도달 → 50% 익절
@@ -84,8 +84,8 @@ def test_no_entry_when_already_in_position():
     df = empty_signal_frame(25)
     df["low"] = 90.0
     df["high"] = 101.0
-    df.loc[8, "entry_base"] = True
-    df.loc[12, "entry_base"] = True   # 보유 중 신호 → 무시되어야
+    df.loc[8, "enter_long"] = True
+    df.loc[12, "enter_long"] = True   # 보유 중 신호 → 무시되어야
     _set_bar(df, 9, 100.0, 101.0, 99.0, 100.0)
 
     res = backtest.run_on_signals(df, SMALL, COSTS, initial_capital=10000.0)
