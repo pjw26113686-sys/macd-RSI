@@ -12,26 +12,26 @@ import pandas as pd
 DATA_ROOT = Path(__file__).resolve().parents[2] / "data"
 
 
-def cache_path(market: str, symbol: str) -> Path:
+def cache_path(market: str, symbol: str, timeframe: str = "1h") -> Path:
     safe = symbol.replace("/", "_").replace(":", "_")
-    return DATA_ROOT / market / f"{safe}_1h.parquet"
+    return DATA_ROOT / market / f"{safe}_{timeframe}.parquet"
 
 
-def save(df: pd.DataFrame, market: str, symbol: str) -> Path:
-    path = cache_path(market, symbol)
+def save(df: pd.DataFrame, market: str, symbol: str, timeframe: str = "1h") -> Path:
+    path = cache_path(market, symbol, timeframe)
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(path)
     return path
 
 
-def load(market: str, symbol: str) -> pd.DataFrame | None:
-    path = cache_path(market, symbol)
+def load(market: str, symbol: str, timeframe: str = "1h") -> pd.DataFrame | None:
+    path = cache_path(market, symbol, timeframe)
     if path.exists():
         return pd.read_parquet(path)
     return None
 
 
-def validate_ohlcv(df: pd.DataFrame, market: str) -> pd.DataFrame:
+def validate_ohlcv(df: pd.DataFrame, market: str = "futures") -> pd.DataFrame:
     """중복 타임스탬프 제거, UTC 통일, 정렬, 0거래량/결측 처리.
 
     - 인덱스는 UTC tz-aware DatetimeIndex (name='time')로 통일.

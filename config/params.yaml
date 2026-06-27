@@ -1,53 +1,43 @@
-# 전략 파라미터 + 시장별 비용 (strategy_spec_v2.md §1, §5)
-# 이 값들은 "정답"이 아니라 grid search 시작점이다 (2차에서 시장별 스윕).
+# 해외선물 프랍 다전략 비교 백테스트 설정
+# 전략 파라미터는 "정답"이 아니라 출발값이다(추후 grid search).
 
-strategy:
-  # MACD
-  macd_fast: 12          # 스윕: 8, 12
-  macd_slow: 26          # 스윕: 21, 26
-  macd_signal: 9         # 스윕: 7, 9
-  # RSI (Wilder)
-  rsi_period: 14         # 스윕: 7, 9, 14
-  rsi_entry_low: 50      # 스윕: 45, 50
-  rsi_entry_high: 70     # 스윕: 65, 70, 75
-  rsi_support_band: 5    # "50 부근" = 50 +/- band. 스윕: 3, 5, 8
-  # 추세 / 거래량 필터 (모멘텀스코프)
-  hma_period: 100        # 스윕: 50, 100
-  vol_ma_period: 20
-  vol_ma_mult: 1.0
-  # 진입 보조
-  delay_window: 5        # 지연진입 유효 봉수. 스윕: 3, 5, 10
-  min_body_ratio: 0.5    # 양봉 최소 몸통비율 (close-open)/(high-low). 스윕: 0.3, 0.5
-  # 청산
-  swing_lookback_M: 10   # 손절 전저점 탐색 봉수. 스윕: 5, 10, 20
-  stop_buffer: 0.001     # 손절가 노이즈 여유 (swing_low * (1 - buffer))
-  reward_ratio: 2.0      # 손익비 1:2
+# 전략별 파라미터 오버라이드 (없으면 각 전략의 default_params 사용)
+strategies:
+  ma_cross:
+    fast_ma: 20
+    slow_ma: 50
+    swing_lookback_M: 10
+    stop_buffer: 0.001
+    reward_ratio: 2.0
+  bollinger:
+    bb_period: 20
+    bb_std: 2.0
+    swing_lookback_M: 10
+    stop_buffer: 0.001
 
-# 시장별 비용 (편도). 진입가=open*(1+slip), 청산가=exit*(1-slip), 양변 수수료 차감.
-costs:
-  crypto:
-    fee: 0.0010          # 0.10% 테이커
-    slippage: 0.0010     # 0.10%
-    sell_tax: 0.0
-  stock:
-    fee: 0.0000          # 무료수수료 가정 (규제수수료 미세)
-    slippage: 0.0005     # 0.05%
-    sell_tax: 0.0
+# 포지션 사이징 (mode: fixed | risk)
+sizing:
+  mode: fixed
+  contracts: 1          # mode=fixed: 항상 N계약
+  risk_dollars: 250     # mode=risk: 거래당 손절폭 리스크($)
+  max_contracts: 10     # mode=risk 상한
 
-# 데이터 소스 / 백테스트 대상
+# 프랍 룰셋 (src/prop/rules.py 프리셋명)
+prop:
+  ruleset: apex_50k     # apex_25k/50k/100k/150k, topstep_50k
+
+# 데이터 (합성 우선; 실데이터는 synthetic:false + path_template)
 data:
-  crypto:
-    exchange: binance
-    symbol: BTC/USDT
-    timeframe: 1h
-    since: "2020-01-01T00:00:00Z"
-  stock:
-    symbol: AAPL
-    interval: 60m
-    period: 730d         # yfinance 60m 최대 730일
-    auto_adjust: true
+  futures:
+    synthetic: true
+    timeframe: "5m"
+    n_bars: 8000
+    seed: 0
+    drift: 0.0
+    vol_ticks: 8.0
+    path_template: "data/futures/{symbol}_{tf}.csv"
 
-backtest:
-  initial_capital: 10000
-  # 자본 대비 진입 비중 (1차 단순화: 고정 비중). 포지션 사이징은 2차.
-  position_pct: 1.0
+# 비교 대상 (비우면 등록된 모든 전략 × 아래 상품)
+compare:
+  strategies: [ma_cross, bollinger]
+  instruments: [NQ, ES, MNQ]

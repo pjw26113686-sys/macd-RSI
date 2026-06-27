@@ -1,39 +1,37 @@
-"""미래참조(look-ahead) 검증 — 자체엔진이 freqtrade 내장검증을 못 받으므로 직접 구현.
+"""미래참조(look-ahead) 검증 — 등록된 모든 전략에 대해 자동 강제.
 
-방법: signals_core를 전체 데이터로 계산한 값과, t시점까지 자른 부분집합으로 계산한
-값의 t시점 신호가 동일해야 한다. 다르면 미래 데이터가 새어든 것이다.
+방법: 전략 신호를 전체 데이터로 계산한 값과, t시점까지 자른 부분으로 계산한 값의
+t시점 신호가 동일해야 한다. 다르면 미래 데이터가 새어든 것이다. 새 전략을 등록하면
+이 테스트가 자동으로 그 전략도 검사한다.
 """
 import numpy as np
+import pytest
 
-from src import signals_core as sc
-from tests.helpers import default_params, random_walk_ohlcv
+from src.strategies.registry import STRATEGIES, get_strategy
+from tests.helpers import random_walk_ohlcv
 
 
-def test_no_future_leak_in_signal_columns():
-    params = default_params()
-    df = random_walk_ohlcv(600, seed=7)
-    full = sc.add_signals(df, params)
+def _equal(a, b) -> bool:
+    if isinstance(a, (bool, np.bool_)) or isinstance(b, (bool, np.bool_)):
+        return bool(a) == bool(b)
+    fa, fb = float(a), float(b)
+    if np.isnan(fa) and np.isnan(fb):
+        return True
+    return np.isclose(fa, fb, rtol=1e-9, atol=1e-9)
+
+
+@pytest.mark.parametrize("name", sorted(STRATEGIES))
+def test_no_future_leak(name):
+    strat = get_strategy(name)
+    params = strat.params()
+    df = random_walk_ohlcv(500, seed=7, freq="5min")
+    full = strat.add_signals(df, params)
 
     rng = np.random.default_rng(123)
-    test_points = rng.integers(200, len(df) - 1, size=25)
-
-    for t in sorted(set(int(x) for x in test_points)):
-        trunc = sc.add_signals(df.iloc[: t + 1], params)
-        for col in sc.SIGNAL_COLUMNS:
-            full_val = bool(full.iloc[t][col])
-            trunc_val = bool(trunc.iloc[t][col])
-            assert full_val == trunc_val, (
-                f"미래참조 감지: col={col}, t={t}, full={full_val}, trunc={trunc_val}"
+    for t in sorted(set(int(x) for x in rng.integers(200, len(df) - 1, size=20))):
+        trunc = strat.add_signals(df.iloc[: t + 1], params)
+        for col in strat.signal_columns:
+            assert _equal(full.iloc[t][col], trunc.iloc[t][col]), (
+                f"미래참조 감지: 전략={name}, col={col}, t={t}, "
+                f"full={full.iloc[t][col]}, trunc={trunc.iloc[t][col]}"
             )
-
-
-def test_indicators_match_at_t_under_truncation():
-    """연속 지표값도 t시점 절단과 전체가 (워밍업 이후) 동일해야 한다."""
-    params = default_params()
-    df = random_walk_ohlcv(400, seed=11)
-    full = sc.compute_indicators(df, params)
-    t = 350
-    trunc = sc.compute_indicators(df.iloc[: t + 1], params)
-    for col in ["macd_line", "signal_line", "rsi", "hma"]:
-        a, b = full.iloc[t][col], trunc.iloc[t][col]
-        assert np.isclose(a, b, rtol=1e-9, atol=1e-9), f"{col}: {a} != {b}"

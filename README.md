@@ -1,81 +1,95 @@
-# MACD + RSI 모멘텀 전략 — 1차 백테스트 (전략 A + 모멘텀스코프)
+# 해외선물 프랍 다전략 비교 백테스트 프레임워크
 
-Ross Cameron 스타일로 포장된 MACD+RSI 1시간봉 모멘텀 전략의 **신호 작동 검증용**
-백테스트. 유니버스를 넓히기 전에 단일 대장주(BTC/USDT, AAPL)로 전략 신호 자체가
-작동하는지부터 검증한다. 상세 규칙은 `strategy_spec_v2.md`, 아키텍처는
-`implementation_architecture.md` 참조.
+새 매매 전략을 **한 파일로 추가**하면 자동으로 **선물 백테스트 · Apex 프랍룰 평가 ·
+다전략 비교**까지 되는 구조. 프랍(Apex/CME) 기준의 자동매매 봇으로 가기 위한
+전 단계 — "전략이 프랍 룰을 통과하는가"를 같은 기준으로 비교한다.
 
 ## 설계 핵심
 
-- **두뇌는 하나(`src/signals_core.py`)** — 지표(MACD/Wilder RSI/HMA/거래량MA)와
-  캔들단위 불리언 신호를 순수·벡터화로 계산. 미래참조 0(`test_lookahead`로 강제).
-- **상태 전이는 엔진(`src/engine/`)** — 지연진입 대기·폐기, 분할익절→본전스탑→
-  잔량청산은 상태머신이라 엔진이 보유.
-- **무결성 규율(spec §0)** — 신호는 종가 확정에서만, 진입/신호청산은 다음 봉 시가
-  체결, 손절·목표 동시도달 시 손절 우선, 비용(수수료·슬리피지) 반영.
+- **전략은 신호만 책임진다.** 체결 타이밍·포지션 사이징·달러손익·프랍룰 평가·비교는
+  전부 프레임워크가 처리. 전략 코드에 엔진/프랍 디테일이 새지 않는다.
+- **지표는 단일 구현(`src/signals_core.py`).** 모든 전략이 import → 전략 간 드리프트 방지.
+- **미래참조 0.** 각 전략이 `signal_columns`를 선언하고 `tests/test_lookahead.py`가
+  전략별로 t절단 동일성을 자동 강제.
+- **선물 손익은 계약·틱·달러.** 롱/숏 양방향. 프랍 트레일링DD는 봉 고저(wick)까지 본다.
 
 ## 구조
 
 ```
-config/params.yaml      파라미터(§1) + 시장별 비용(§5) + 데이터 설정
-src/signals_core.py     [순수] 지표 + 신호 + 진입후보(enter_long) — 단일 두뇌
-src/engine/position.py  포지션 상태머신 + 체결/비용 헬퍼
-src/engine/backtest.py  이벤트 루프 (run_backtest / run_on_signals)
-src/data/{crypto,stocks,cache}.py   ccxt / yfinance 수집 + parquet 캐시
-src/metrics.py          CAGR/MDD/Sharpe/승률/실현손익비 등
-src/run.py              CLI 진입점
-tests/                  lookahead / signals / engine 검증
-freqtrade/              독립 검증용 전략·설정 (signals_core 공유 → freqtrade/README.md)
-scripts/                parquet→freqtrade 변환, 자체엔진 vs freqtrade 교차비교
+src/
+  signals_core.py        지표 라이브러리(EMA/RMA/WMA/HMA/RSI/MACD/Bollinger/ATR…)
+  instruments.py         선물 계약명세(tick/포인트가치/수수료) + 프리셋(ES/NQ/MES…)
+  strategies/
+    base.py              Strategy 프로토콜 + ExitModel(청산 정책)
+    TEMPLATE.py          새 전략 작성 템플릿(복사해서 시작)
+    example_ma_cross.py  예시: MA 교차(롱/숏 추세추종)
+    example_bollinger.py 예시: 볼린저 밴드터치(롱/숏 평균회귀)
+    registry.py          전략 등록 지점(여기에 한 줄 추가)
+  engine/
+    pnl.py               PnLModel: NotionalPnL(%) / FuturesPnL(계약·달러)
+    position.py          포지션/거래 + 손절·목표 레벨(방향 일반화)
+    backtest.py          전략-불가지론 이벤트 엔진(다음봉 시가 체결, 손절 우선)
+  prop/
+    rules.py             PropRuleSet + Apex/Topstep 프리셋
+    evaluator.py         봉별 MTM(고저)로 트레일링DD·일일손실·수익목표·일관성 판정
+  data/futures.py        합성(random-walk) 생성기 + CSV/parquet 로더
+  metrics.py             달러기반 성과 + 꼬리위험(연속손실/단일최대손실/CVaR)
+  compare.py             다전략×상품 비교 러너(표/CSV)
+  run.py                 단일 전략 실행
+config/params.yaml       전략·사이징·프랍·데이터·비교 설정
+tests/                   지표 / lookahead(전략별) / 선물P&L / 숏엔진 / 프랍평가기
+docs/prop_futures_spec.md  프랍룰 정의·트레일링DD 처리·실데이터 전환
 ```
 
 ## 설치 & 실행
 
 ```bash
-pip install -e .            # 또는: pip install pandas numpy pyyaml pyarrow ccxt yfinance
-pytest -q                   # 13개 테스트 (lookahead 통과 = 신호 신뢰성 게이트)
+pip install -e .            # 또는: pip install pandas numpy pyyaml pyarrow pytest
+pytest -q                   # 26 테스트(lookahead = 신호 신뢰성 게이트)
 
-python -m src.run --market crypto   # BTC/USDT 1h (ccxt)
-python -m src.run --market stock    # AAPL 60m (yfinance)
+python -m src.compare                                   # 전략×상품 비교표(+ Apex 판정)
+python -m src.run --strategy bollinger --instrument NQ --prop apex_50k
+python -m src.compare --csv out.csv                     # 결과 CSV 저장
 ```
 
-## freqtrade 독립 검증
+> 기본 데이터는 **합성(random-walk) 선물**이다. 프레임워크·프랍평가기 동작 검증용이며
+> **성과 판정용이 아니다**(랜덤워크는 비용 차감 후 손실이 정상 = sanity). 실데이터는
+> 아래 참조.
 
-자체 엔진과 **같은 두뇌(`signals_core`)**를 쓰는 freqtrade 전략으로 미래참조를
-독립 검증한다. `signals_core.compute_entry_candidates`의 `enter_long`을 자체 엔진과
-freqtrade가 함께 소비하므로 진입이 일치한다. 절차·판정기준은 `freqtrade/README.md`.
+## 새 전략 추가 (이 구조의 핵심)
 
 ```bash
-python scripts/to_freqtrade_data.py                         # parquet → feather
-freqtrade backtesting       -c freqtrade/config.json -s RossMacdRsiStrategy
-freqtrade lookahead-analysis -c freqtrade/config.json -s RossMacdRsiStrategy  # biased 0 확인
-python scripts/compare_engines.py                           # 진입 Jaccard ≈ 1.0
+cp src/strategies/TEMPLATE.py src/strategies/my_strategy.py
 ```
+1. `add_signals`에 진입조건(`enter_long`/`enter_short`)을 채운다. 지표는 `signals_core`만 사용.
+2. `exit_model`(손절/목표/시간/신호청산 정책)과 `signal_columns`를 선언한다.
+3. `registry.py` `STRATEGIES`에 한 줄 등록한다.
 
-## 데이터 수집 / 네트워크 주의
+→ `pytest -q`(미래참조 자동검증 통과) → `python -m src.compare`(표에 자동 등장).
 
-`--market` 실행 시 `data/{market}/{symbol}_1h.parquet` 캐시가 있으면 그것을 우선
-사용하고, 없으면 다운로드 후 캐시한다.
+## 프랍 룰 (Apex 위주)
 
-> **샌드박스/제한 네트워크 주의:** 일부 실행환경은 네트워크 정책으로 `api.binance.com`,
-> Yahoo Finance 등 외부 시세 호스트를 차단(403)한다. 이 경우 자동 다운로드가 실패한다.
-> 해결책:
-> 1. 외부망이 열린 로컬/환경에서 한 번 받아 `data/<market>/<symbol>_1h.parquet`로
->    캐시하면, 이후 제한 환경에서도 그 캐시로 백테스트가 돌아간다.
-> 2. 또는 동일 스키마(UTC tz-aware `time` 인덱스 + open/high/low/close/volume)의
->    parquet을 직접 그 경로에 떨어뜨리면 된다. `src.data.cache.validate_ohlcv`가
->    정합성(중복제거·UTC통일·결측처리)을 검증한다.
+`config/params.yaml`의 `prop.ruleset`으로 선택: `apex_25k/50k/100k/150k`,
+`topstep_50k`. 평가기는 봉별 미실현 포함 equity(고/저)로:
+- **트레일링DD** — 고점 대비 하락이 한도 초과 시 실격(인트라데이 wick 반영).
+- **수익목표** — 누적이익 도달 시 통과(소요일 기록).
+- **일일손실 한도**(Topstep) / **일관성 30%**(Apex 출금조건) 검사.
 
-## 검증된 것 / 남은 것
+> 룰 수치는 **출발값**이다. 실제 약관과 대조 후 사용할 것(`src/prop/rules.py` 주석).
 
-- ✅ `signals_core` 미래참조 0, 지표/필터 정확성, 진입후보 추출 회귀안전망 (`pytest`).
-- ✅ 엔진 체결 규율: 다음 봉 시가 진입, 손절 우선, 분할익절+본전스탑.
-- ✅ 합성(random-walk) 데이터 엔드투엔드: 비용 차감 후 손실(랜덤워크 sanity).
-- ✅ freqtrade 독립 검증 산출물(전략·설정·변환기·교차비교) 완성 — 실행은 외부망 환경.
-- ⏳ 실데이터(BTC/AAPL) 성과 판정 + freqtrade lookahead-analysis — 외부망 환경에서 수행.
+## 실데이터(CME) 전환
 
-## 비범위 (2차 백로그)
+```yaml
+# config/params.yaml
+data:
+  futures:
+    synthetic: false
+    path_template: "data/futures/{symbol}_{tf}.csv"   # OHLCV, UTC
+```
+Databento/Sierra Chart/IQFeed 등에서 받은 OHLCV(CSV/parquet, UTC)를 위 경로에
+두면 `src/data/futures.load_futures`가 정합성 검증 후 사용한다.
 
-전략 B(RSI 다이버전스), `hist_turn_up` 진입결합 A/B, 유니버스 확장(생존편향·호출제한),
-grid search/hyperopt, walk-forward/OOS, freqtrade 암호화폐 라이브, 포지션 사이징,
-한국주식.
+## 비범위 (다음 차)
+
+실데이터 성과판정, Topstep 프리셋 정밀화, hyperopt/grid-search, walk-forward/OOS,
+라이브 자동매매(브로커 API·주문집행), 롤오버/연속물 스티칭, 세션(RTH/ETH) 정밀 모델.

@@ -3,21 +3,20 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "macd-rsi-backtest"
-version = "0.1.0"
-description = "MACD+RSI momentum strategy — phase-1 single-symbol backtest (BTC/USDT, AAPL)"
+name = "prop-futures-backtest"
+version = "0.2.0"
+description = "해외선물 프랍(Apex/CME) 다전략 비교 백테스트 프레임워크"
 requires-python = ">=3.10"
 dependencies = [
     "pandas>=2.0",
     "numpy>=1.24",
     "pyyaml>=6.0",
     "pyarrow>=12.0",
-    "ccxt>=4.0",
-    "yfinance>=0.2.40",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
+data = ["ccxt>=4.0", "yfinance>=0.2.40"]   # crypto/stock 노셔널 경로(선택)
 
 [tool.setuptools.packages.find]
 where = ["."]
