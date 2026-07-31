@@ -23,11 +23,35 @@ src/engine/position.py  포지션 상태머신 + 체결/비용 헬퍼
 src/engine/backtest.py  이벤트 루프 (run_backtest / run_on_signals)
 src/data/{crypto,stocks,cache}.py   ccxt / yfinance 수집 + parquet 캐시
 src/metrics.py          CAGR/MDD/Sharpe/승률/실현손익비 등
-src/run.py              CLI 진입점
-tests/                  lookahead / signals / engine 검증
+src/validation/         [오버피팅 방어] 워크포워드·purged K-fold·CSCV PBO·Deflated Sharpe
+src/run.py              단일 백테스트 CLI 진입점
+src/validate.py         오버피팅 검증 CLI (스윕 → PBO/DSR/워크포워드 판정카드)
+tests/                  lookahead / signals / engine / validation 검증
 freqtrade/              독립 검증용 전략·설정 (signals_core 공유 → freqtrade/README.md)
 scripts/                parquet→freqtrade 변환, 자체엔진 vs freqtrade 교차비교
 ```
+
+## 오버피팅 방어 (기관급 검증)
+
+단일 백테스트가 "좋아 보이는 것"이 우연/과최적화인지 판정한다. 여러 파라미터 설정을
+스윕한 뒤, 다중검정 편향까지 반영해 세 축으로 신호등(신뢰/주의/기각)을 낸다.
+
+```bash
+python -m src.validate --synthetic --bars 3000     # 합성 데이터 데모(네트워크 불필요)
+python -m src.validate --market crypto              # 캐시 있으면 실데이터, 없으면 합성 폴백
+python -m src.validate --market stock --blocks 12 --folds 6 --wf-mode anchored
+```
+
+- **PBO (`src/validation/pbo.py`)** — CSCV(조합대칭교차검증). IS 최우수 설정이 OOS
+  중앙값 아래로 떨어지는 확률. 0.5면 무작위(순전한 과최적화), 낮을수록 견고.
+- **Deflated Sharpe** — N번 시도의 우연 문턱을 관측 Sharpe가 넘는지(왜도·첨도 보정).
+  0.95↑ 유의. `expected_max_sharpe_ratio`가 다중검정 문턱 SR₀를 산출.
+- **워크포워드 (`src/validation/{splits,sweep}.py`)** — anchored·rolling 분할로 학습→
+  검증 재최적화, IS→OOS 성능감쇠 측정. purged K-fold(embargo·horizon)도 제공.
+
+검증 레이어는 기존 lookahead-safe 엔진을 그대로 소비하며(`run_sweep`의 `_run_one`이
+유일한 백엔드 교체 지점 — vectorbt 등 고속 스윕 백엔드를 여기에 꽂을 수 있다),
+`tests/test_validation.py`가 분할 인과성·PBO 수렴·DSR 다중검정 성질을 회귀 고정한다.
 
 ## 설치 & 실행
 
@@ -77,5 +101,6 @@ python scripts/compare_engines.py                           # 진입 Jaccard ≈
 ## 비범위 (2차 백로그)
 
 전략 B(RSI 다이버전스), `hist_turn_up` 진입결합 A/B, 유니버스 확장(생존편향·호출제한),
-grid search/hyperopt, walk-forward/OOS, freqtrade 암호화폐 라이브, 포지션 사이징,
-한국주식.
+hyperopt, freqtrade 암호화폐 라이브, 포지션 사이징, 한국주식, vectorbt 고속 스윕 백엔드,
+일반인용 Streamlit UI.
+(✅ 완료: grid search 스윕 + walk-forward/OOS + 오버피팅 방어 — `src/validation/`)
