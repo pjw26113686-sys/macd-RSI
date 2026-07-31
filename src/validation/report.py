@@ -55,6 +55,7 @@ def format_validation_report(
     pbo_result: dict,
     dsr_result: dict,
     wfa_result: dict | None = None,
+    ci_result: dict | None = None,
 ) -> str:
     """검증 산출물을 사람이 읽는 판정카드 문자열로."""
     pbo = pbo_result["pbo"]
@@ -96,5 +97,18 @@ def format_validation_report(
             lines.append(f"║    └ OOS 총수익률 : {pct(oos['total_return'])} (폴드평균)")
         if "MDD" in oos:
             lines.append(f"║    └ OOS MDD      : {pct(oos['MDD'])}")
+    if ci_result and ci_result.get("n_resamples"):
+        cim = ci_result["metrics"]
+        lines += [
+            "║  ────────────────────────────────────",
+            f"║  신뢰구간(부트스트랩 {ci_result['n_resamples']}회, {ci_result['ci']:.0%})",
+            f"║    └ 총수익률   : {pct(cim['total_return']['point'])}  "
+            f"[{pct(cim['total_return']['lo'])}, {pct(cim['total_return']['hi'])}]",
+            f"║    └ Sharpe    : {num(cim['Sharpe']['point'])}  "
+            f"[{num(cim['Sharpe']['lo'])}, {num(cim['Sharpe']['hi'])}]",
+            f"║    └ MDD       : {pct(cim['MDD']['point'])}  "
+            f"[{pct(cim['MDD']['lo'])}, {pct(cim['MDD']['hi'])}]",
+            f"║    └ 손익확률   : {pct(ci_result['prob_positive'])}",
+        ]
     lines.append("╚═══════════════════════════════════════")
     return "\n".join(lines)

@@ -93,6 +93,23 @@ def _render_equity(result: dict):
     st.caption(f"전략 최종자산 {m['final_equity']:.0f} vs Buy&Hold {final_bh:.0f} · "
                f"설정 {result['n_configs']}개 스윕 중 최우수")
 
+    ci = result.get("ci")
+    if ci and ci.get("n_resamples"):
+        st.subheader("④ 신뢰구간 (블록 부트스트랩)")
+        st.caption(f"{ci['n_resamples']}회 재표집 · {ci['ci']:.0%} 구간 · "
+                   f"구간이 0을 가로지르면 그 성과는 견고하지 않음")
+        cim = ci["metrics"]
+
+        def _band(key, is_pct=True):
+            b = cim[key]
+            f = (lambda x: f"{x*100:.1f}%") if is_pct else (lambda x: f"{x:.2f}")
+            return f"{f(b['point'])}  [{f(b['lo'])}, {f(b['hi'])}]"
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("총수익률 (95% CI)", _band("total_return"))
+        c2.metric("Sharpe (95% CI)", _band("Sharpe", is_pct=False))
+        c3.metric("MDD (95% CI)", _band("MDD"))
+        c4.metric("손익확률", f"{ci['prob_positive']*100:.1f}%")
+
 
 def main():
     st.title("📈 퀀트 전략 실험·검증")

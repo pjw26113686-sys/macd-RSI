@@ -116,6 +116,28 @@ config `backtest.sizing`/`backtest.risk_pct`로 기본값을, CLI `--sizing/--ri
 `.github/workflows/tests.yml` — push/PR마다 3개 파이썬 버전에서 전체 테스트(미래참조
 게이트 포함) + pyflakes + 검증 CLI 스모크를 자동 실행한다.
 
+## 다자산 포트폴리오
+
+한 전략을 여러 종목에 배분해 합산 성과·**분산효과**를 본다. 종목 간 상관이 낮을수록
+변동이 상쇄돼 위험대비수익(Sharpe)이 개선된다. 각 슬리브는 독립 엔진으로 돌고,
+자산곡선을 합쳐 포트폴리오 지표·상관행렬·분산효과를 낸다.
+
+```bash
+python -m src.portfolio --strategy breakout_donchian --symbols 4 --synthetic \
+    --sizing fixed_risk --risk-pct 0.01
+```
+
+산출: 포트폴리오 총수익/CAGR/MDD/Sharpe, 종목별 성과, 평균 상관계수, 포트폴리오
+Sharpe vs 평균 종목 Sharpe(분산효과). `run_portfolio(spec, {symbol: df}, ...)`로 코드에서도 호출.
+
+## 신뢰구간 (블록 부트스트랩)
+
+단일 백테스트는 점추정 하나(Sharpe 1.8 등)만 준다. 그게 우연인지 견고한지는 알 수
+없다. 봉수익률을 **블록 단위로 재표집**(자기상관 보존)해 지표 분포를 만들고 신뢰구간과
+손익확률을 낸다. **구간이 0을 가로지르면 그 성과는 견고하지 않다**(예: Sharpe 3.5인데
+95% 구간이 [-1.4, 7.3]이면 신뢰 불가). `validate`/`strategy_check` 판정카드와 UI에
+자동 표시되고, `--no-ci`로 끄고 `--resamples`로 횟수를 조절한다.
+
 ## 오버피팅 방어 (기관급 검증)
 
 단일 백테스트가 "좋아 보이는 것"이 우연/과최적화인지 판정한다. 여러 파라미터 설정을

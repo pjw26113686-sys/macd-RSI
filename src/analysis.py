@@ -14,7 +14,8 @@ from src.engine import backtest as _bt
 from src.engine.position import Costs
 from src.strategy_check import run_integrity_gauntlet
 from src.validate import apply_sizing
-from src.validation import cscv_pbo, deflated_sharpe_ratio, expand_grid, run_sweep
+from src.validation import (bootstrap_confidence_intervals, cscv_pbo,
+                            deflated_sharpe_ratio, expand_grid, run_sweep)
 from src.validation.report import _verdict_level
 from src.validation.sweep import walk_forward_analysis
 
@@ -40,6 +41,8 @@ def evaluate_strategy(
     wf_mode: str = "rolling",
     embargo: int = 0,
     do_wfa: bool = True,
+    do_bootstrap: bool = True,
+    n_resamples: int = 1000,
     sizing: str | None = None,
     risk_pct: float | None = None,
 ) -> dict:
@@ -87,11 +90,18 @@ def evaluate_strategy(
         position_pct=bt_cfg["position_pct"], strategy=spec)
     best_metrics = _metrics.compute_metrics(best_res, bars_per_year=bars_per_year)
 
+    # 최우수 설정 자산곡선의 봉수익률 → 블록 부트스트랩 신뢰구간.
+    ci = None
+    if do_bootstrap:
+        ci = bootstrap_confidence_intervals(
+            best_res.equity.pct_change().to_numpy(), bars_per_year,
+            n_resamples=n_resamples, seed=0)
+
     degradation = wfa["degradation"] if wfa else float("nan")
     level, reason = _verdict_level(pbo["pbo"], dsr["dsr"], degradation)
 
     out.update({
-        "pbo": pbo, "dsr": dsr, "wfa": wfa,
+        "pbo": pbo, "dsr": dsr, "wfa": wfa, "ci": ci,
         "best_index": best_i, "best_params": best_params, "best_metrics": best_metrics,
         "n_configs": len(params_list),
         "equity": best_res.equity, "benchmark": buy_hold_equity(df, bt_cfg["initial_capital"]),

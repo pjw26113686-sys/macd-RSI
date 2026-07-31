@@ -24,8 +24,10 @@ import yaml
 
 from src import metrics as _metrics
 from src import strategies as strat
+from src.engine import backtest
 from src.engine.position import Costs
-from src.validation import cscv_pbo, deflated_sharpe_ratio, expand_grid, run_sweep
+from src.validation import (bootstrap_confidence_intervals, cscv_pbo,
+                            deflated_sharpe_ratio, expand_grid, run_sweep)
 from src.validation.report import format_validation_report
 from src.validation.sweep import walk_forward_analysis
 
@@ -148,9 +150,19 @@ def validate_spec(spec, df, symbol, bpy, market, costs, bt, args):
             strategy=spec,
         )
 
+    # 최우수 설정 자산곡선의 봉수익률 → 블록 부트스트랩 신뢰구간.
+    ci_res = None
+    if not args.no_ci:
+        best_res = backtest.run_backtest(
+            df, params_list[best_i], costs, initial_capital=bt["initial_capital"],
+            position_pct=bt["position_pct"], strategy=spec)
+        ci_res = bootstrap_confidence_intervals(
+            best_res.equity.pct_change().to_numpy(), bpy,
+            n_resamples=args.resamples, seed=0)
+
     title = f"{spec.category}/{spec.name}·{market.upper()}·{symbol}"
-    print(format_validation_report(title, pbo_res, dsr_res, wfa_res))
-    return pbo_res, dsr_res, wfa_res
+    print(format_validation_report(title, pbo_res, dsr_res, wfa_res, ci_res))
+    return pbo_res, dsr_res, wfa_res, ci_res
 
 
 def run_validation(args):
@@ -194,6 +206,8 @@ def main():
     ap.add_argument("--wf-mode", choices=["anchored", "rolling"], default="rolling")
     ap.add_argument("--embargo", type=int, default=0, help="학습-검증 완충 봉수")
     ap.add_argument("--no-wfa", action="store_true", help="워크포워드 생략(PBO/DSR만)")
+    ap.add_argument("--no-ci", action="store_true", help="부트스트랩 신뢰구간 생략")
+    ap.add_argument("--resamples", type=int, default=1000, help="부트스트랩 재표집 횟수")
     ap.add_argument("--sizing", choices=["fixed_fraction", "fixed_risk"], default=None,
                     help="포지션 사이징 (기본: config backtest.sizing)")
     ap.add_argument("--risk-pct", type=float, default=None, dest="risk_pct",

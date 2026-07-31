@@ -11,6 +11,7 @@
 
 모든 함수는 기존 엔진(src.engine)의 lookahead-safe 규율을 그대로 소비한다.
 """
+from src.validation.bootstrap import bootstrap_confidence_intervals
 from src.validation.pbo import (
     cscv_pbo,
     deflated_sharpe_ratio,
@@ -35,4 +36,5 @@ __all__ = [
     "cscv_pbo",
     "deflated_sharpe_ratio",
     "expected_max_sharpe_ratio",
+    "bootstrap_confidence_intervals",
 ]

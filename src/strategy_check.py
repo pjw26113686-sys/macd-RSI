@@ -36,7 +36,8 @@ from src.engine import backtest as _bt
 from src.engine.position import Costs
 from src.strategies.base import StrategySpec
 from src.validate import CONFIG_PATH, apply_sizing, load_config, _load_data
-from src.validation import cscv_pbo, deflated_sharpe_ratio, expand_grid, run_sweep
+from src.validation import (bootstrap_confidence_intervals, cscv_pbo,
+                            deflated_sharpe_ratio, expand_grid, run_sweep)
 from src.validation.report import format_validation_report
 from src.validation.sweep import walk_forward_analysis
 
@@ -212,8 +213,13 @@ def run_performance(spec: StrategySpec, df: pd.DataFrame, symbol: str, bpy: int,
             n_splits=args.folds, mode=args.wf_mode, embargo=args.embargo,
             initial_capital=bt_cfg["initial_capital"],
             position_pct=bt_cfg["position_pct"], strategy=spec)
+    ci_res = None
+    if not getattr(args, "no_ci", False):
+        ci_res = bootstrap_confidence_intervals(
+            sweep["returns"].iloc[:, best_i].to_numpy(), bpy,
+            n_resamples=getattr(args, "resamples", 1000), seed=0)
     title = f"{spec.category}/{spec.name}·{market.upper()}·{symbol}"
-    return format_validation_report(title, pbo_res, dsr_res, wfa_res)
+    return format_validation_report(title, pbo_res, dsr_res, wfa_res, ci_res)
 
 
 # --------------------------------------------------------------------------- #
@@ -295,6 +301,8 @@ def main():
     ap.add_argument("--embargo", type=int, default=0)
     ap.add_argument("--no-wfa", action="store_true", help="워크포워드 생략")
     ap.add_argument("--no-perf", action="store_true", help="무결성 게이트만(성과 판정 생략)")
+    ap.add_argument("--no-ci", action="store_true", help="부트스트랩 신뢰구간 생략")
+    ap.add_argument("--resamples", type=int, default=1000, help="부트스트랩 재표집 횟수")
     ap.add_argument("--sizing", choices=["fixed_fraction", "fixed_risk"], default=None,
                     help="포지션 사이징 (기본: config backtest.sizing)")
     ap.add_argument("--risk-pct", type=float, default=None, dest="risk_pct",

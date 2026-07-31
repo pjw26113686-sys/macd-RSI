@@ -35,11 +35,13 @@ flowchart TB
     M["CAGR · MDD · Sharpe · 승률 · 실현손익비"]
   end
 
-  subgraph VALID["⑤ 오버피팅 방어 레이어 · src/validation"]
+  subgraph VALID["⑤ 검증·리스크 레이어 · src/validation · src/portfolio.py"]
     V1["splits.py<br/>워크포워드 · purged K-fold"]
     V2["sweep.py<br/>파라미터 스윕 · 워크포워드 분석"]
     V3["pbo.py<br/>CSCV PBO · Deflated Sharpe"]
     V4["report.py<br/>신뢰/주의/기각 판정카드"]
+    V5["bootstrap.py<br/>블록 부트스트랩 신뢰구간"]
+    V6["portfolio.py<br/>다자산 배분 · 분산효과"]
   end
 
   subgraph TOOLS["⑥ 툴 / UI · src · app.py"]
