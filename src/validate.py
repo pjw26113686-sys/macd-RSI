@@ -79,10 +79,16 @@ def _bars_per_year(market: str) -> int:
 
 
 def _load_data(args, cfg):
-    """실데이터 캐시 → 없으면 합성으로 폴백. (df, symbol, bars_per_year, market) 반환.
+    """사용자 파일(--csv) → 실데이터 캐시 → 합성 폴백. (df, symbol, bpy, market) 반환.
 
     합성 데이터라도 --market의 비용·연환산은 존중한다(예: stock이면 stock 비용).
     """
+    csv = getattr(args, "csv", None)
+    if csv:
+        from src.data.ingest import load_ohlcv_file
+        df = load_ohlcv_file(csv, args.market)
+        return df, Path(csv).stem, _bars_per_year(args.market), args.market
+
     if args.synthetic:
         return (synthetic_ohlcv(args.bars, seed=args.seed), "SYNTHETIC",
                 _bars_per_year(args.market), args.market)
@@ -199,6 +205,8 @@ def main():
     ap.add_argument("--list", action="store_true", help="등록된 전략 목록 출력 후 종료")
     ap.add_argument("--market", choices=["crypto", "stock"], default="crypto")
     ap.add_argument("--synthetic", action="store_true", help="합성 데이터 강제 사용")
+    ap.add_argument("--csv", default=None,
+                    help="사용자 실데이터 파일(csv/tsv/parquet/feather) 경로")
     ap.add_argument("--bars", type=int, default=3000, help="합성 데이터 봉 수")
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--blocks", type=int, default=16, help="CSCV 블록 수(짝수)")

@@ -15,6 +15,7 @@ flowchart TB
   subgraph DATA["① 데이터 레이어 · src/data"]
     D1["ccxt / yfinance 수집"] --> D2["parquet 캐시<br/>validate_ohlcv (UTC·중복제거)"]
     D3["합성 데이터<br/>synthetic_ohlcv (네트워크 불필요)"]
+    D4["ingest.py<br/>사용자 CSV/parquet 인제스트"] --> D2
   end
 
   subgraph STRAT["② 전략 레이어 (플러그인) · src/strategies"]

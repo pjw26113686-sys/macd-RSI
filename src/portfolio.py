@@ -158,6 +158,10 @@ def main():
     ap.add_argument("--symbols", type=int, default=4, help="합성 종목 수")
     ap.add_argument("--market", choices=["crypto", "stock"], default="crypto")
     ap.add_argument("--synthetic", action="store_true", help="합성 유니버스 사용")
+    ap.add_argument("--data", nargs="+", default=None,
+                    help="실데이터 파일 목록(csv/parquet/…). 주면 합성 대신 사용")
+    ap.add_argument("--data-dir", default=None,
+                    help="실데이터 디렉터리(안의 모든 표 파일을 유니버스로)")
     ap.add_argument("--bars", type=int, default=3000)
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--sizing", choices=["fixed_fraction", "fixed_risk"], default=None)
@@ -173,9 +177,14 @@ def main():
     bt_cfg = cfg["backtest"]
     bpy = _bars_per_year(args.market)
 
-    if not args.synthetic:
-        print("[!] 실데이터 유니버스는 data/ 캐시가 필요합니다 → 합성 유니버스로 진행.")
-    data = _synthetic_universe(args.symbols, args.bars, args.seed)
+    if args.data or args.data_dir:
+        from src.data.ingest import load_universe
+        data = load_universe(args.data or args.data_dir, args.market)
+        print(f"[i] 실데이터 유니버스 {len(data)}종목: {', '.join(data)}")
+    else:
+        if not args.synthetic:
+            print("[!] 실데이터(--data/--data-dir) 미지정 → 합성 유니버스로 진행.")
+        data = _synthetic_universe(args.symbols, args.bars, args.seed)
 
     params = apply_sizing([spec.default_params], bt_cfg, args)[0]
     result = run_portfolio(spec, data, costs, bt_cfg, bpy, params=params)

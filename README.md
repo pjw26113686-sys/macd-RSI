@@ -116,6 +116,24 @@ config `backtest.sizing`/`backtest.risk_pct`로 기본값을, CLI `--sizing/--ri
 `.github/workflows/tests.yml` — push/PR마다 3개 파이썬 버전에서 전체 테스트(미래참조
 게이트 포함) + pyflakes + 검증 CLI 스모크를 자동 실행한다.
 
+## 실데이터 넣기 (파일 인제스트)
+
+이 환경은 외부 시세가 차단돼 자동 다운로드가 안 된다. 대신 **어디서든 받은 파일을
+떨어뜨리면** 표준 OHLCV로 흡수해 그대로 검증한다(`src/data/ingest.py`). 거래소 CSV
+(밀리초 에폭·대문자 컬럼), yfinance 내보내기(Date 문자열), parquet 캐시 등 다양한
+관례를 자동 판별한다(시간열 이름·에폭 단위·컬럼 대소문자, volume 없으면 0).
+
+```bash
+python -m src.validate --strategy breakout_donchian --csv path/to/BTCUSDT.csv
+python -m src.strategy_check --module my_strategy.py --csv path/to/AAPL.csv
+python -m src.portfolio --strategy breakout_donchian --data-dir path/to/universe/
+python -m src.portfolio --strategy breakout_donchian --data a.csv b.csv c.parquet
+```
+
+지원 형식: `.csv/.tsv/.parquet/.feather`. 스키마 검증은 기존 `validate_ohlcv`(UTC통일·
+중복제거·정렬·결측처리)로 통일된다. `data/<market>/<symbol>_1h.parquet` 캐시에 넣으면
+`--market`만으로도 잡힌다.
+
 ## 다자산 포트폴리오
 
 한 전략을 여러 종목에 배분해 합산 성과·**분산효과**를 본다. 종목 간 상관이 낮을수록

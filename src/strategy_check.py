@@ -293,6 +293,8 @@ def main():
 
     ap.add_argument("--market", choices=["crypto", "stock"], default="crypto")
     ap.add_argument("--synthetic", action="store_true", help="합성 데이터 강제 사용")
+    ap.add_argument("--csv", default=None,
+                    help="사용자 실데이터 파일(csv/tsv/parquet/feather) 경로")
     ap.add_argument("--bars", type=int, default=3000)
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--blocks", type=int, default=16, help="CSCV 블록 수(짝수)")
