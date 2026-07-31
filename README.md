@@ -78,6 +78,21 @@ python -m src.strategy_check --category momentum --no-perf              # 무결
 게이트는 t시점 절단 재계산으로 미래 데이터 누수를 잡는다 —
 `tests/test_strategy_check.py`가 일부러 누수를 넣은 전략이 FAIL로 잡히는지 검증한다.
 
+## 일반인용 대시보드 (Streamlit)
+
+클릭만으로 전략을 고르거나 `.py`를 업로드해 무결성 게이트·오버피팅 판정·수익곡선을
+본다. 계산은 전부 `src/analysis.py`(테스트되는 순수 API)에 위임하고 `app.py`는
+렌더링만 한다.
+
+```bash
+pip install -e ".[ui]"
+streamlit run app.py
+```
+
+- 사이드바: 카테고리→전략 선택(또는 `.py` 업로드), 시장·사이징·리스크·CSCV/폴드 조절.
+- 본문: ① 무결성 게이트(신호등) → ② 성과 판정(PBO/DSR/감쇠) → ③ **최우수 설정 vs
+  Buy & Hold** 수익곡선 + 지표. 벤치마크를 못 이기면 바로 보인다.
+
 ## 포지션 사이징 (리스크 기반)
 
 전액 올인(`position_pct=1.0`) 대신 **거래당 리스크를 일정하게** 유지하는 기관식

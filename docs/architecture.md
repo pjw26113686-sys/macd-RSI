@@ -42,10 +42,12 @@ flowchart TB
     V4["report.py<br/>신뢰/주의/기각 판정카드"]
   end
 
-  subgraph TOOLS["⑥ 툴 / CLI · src"]
+  subgraph TOOLS["⑥ 툴 / UI · src · app.py"]
     C1["run.py<br/>단일 백테스트"]
     C2["validate.py<br/>검증 CLI (전략/카테고리별)"]
     C3["strategy_check.py<br/>합격 판정 하네스"]
+    C4["analysis.py<br/>평가 API (UI/CLI 공유)"]
+    C5["app.py<br/>Streamlit 대시보드"]
   end
 
   subgraph VERIFY["⑦ 독립 검증 · freqtrade/ · scripts/"]
