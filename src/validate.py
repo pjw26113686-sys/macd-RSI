@@ -98,6 +98,19 @@ def _load_data(args, cfg):
     return df, symbol, _bars_per_year(args.market), args.market
 
 
+def apply_sizing(params_list: list[dict], bt_cfg: dict, args) -> list[dict]:
+    """사이징 설정(config backtest + CLI 오버라이드)을 각 params에 주입.
+
+    엔진 사이저는 params["sizing"]/["risk_pct"]를 읽으므로, 포트폴리오 레벨 설정을
+    전략 params로 흘려보낸다. CLI(--sizing/--risk-pct)가 config를 덮어쓴다.
+    """
+    sizing = getattr(args, "sizing", None) or bt_cfg.get("sizing", "fixed_fraction")
+    risk_pct = getattr(args, "risk_pct", None)
+    if risk_pct is None:
+        risk_pct = bt_cfg.get("risk_pct", 0.01)
+    return [{**p, "sizing": sizing, "risk_pct": risk_pct} for p in params_list]
+
+
 def print_catalog():
     """등록된 카테고리·전략 목록 출력."""
     print("등록된 전략 (카테고리별):")
@@ -111,9 +124,9 @@ def print_catalog():
 
 def validate_spec(spec, df, symbol, bpy, market, costs, bt, args):
     """한 전략 스펙을 스윕→PBO/DSR/워크포워드로 검증하고 판정카드를 출력."""
-    params_list = expand_grid(spec.default_params, spec.param_grid)
+    params_list = apply_sizing(expand_grid(spec.default_params, spec.param_grid), bt, args)
     print(f"\n[i] {spec.name} ({spec.category}) · {symbol} · {len(df)}봉 · "
-          f"설정 {len(params_list)}개 스윕 …")
+          f"설정 {len(params_list)}개 · 사이징 {params_list[0]['sizing']} 스윕 …")
     sweep = run_sweep(
         df, params_list, costs, bars_per_year=bpy,
         initial_capital=bt["initial_capital"], position_pct=bt["position_pct"],
@@ -181,6 +194,10 @@ def main():
     ap.add_argument("--wf-mode", choices=["anchored", "rolling"], default="rolling")
     ap.add_argument("--embargo", type=int, default=0, help="학습-검증 완충 봉수")
     ap.add_argument("--no-wfa", action="store_true", help="워크포워드 생략(PBO/DSR만)")
+    ap.add_argument("--sizing", choices=["fixed_fraction", "fixed_risk"], default=None,
+                    help="포지션 사이징 (기본: config backtest.sizing)")
+    ap.add_argument("--risk-pct", type=float, default=None, dest="risk_pct",
+                    help="fixed_risk의 거래당 리스크 비율 (예: 0.01)")
     ap.add_argument("--config", default=str(CONFIG_PATH))
     args = ap.parse_args()
 

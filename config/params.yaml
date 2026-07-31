@@ -49,5 +49,10 @@ data:
 
 backtest:
   initial_capital: 10000
-  # 자본 대비 진입 비중 (1차 단순화: 고정 비중). 포지션 사이징은 2차.
+  # 명목 상한(자본 대비). 어떤 사이저도 이 비중을 넘지 않는다.
   position_pct: 1.0
+  # 포지션 사이징 (src/engine/sizing.py):
+  #   fixed_fraction : 자본의 position_pct를 명목으로 (기본, 기존 동작)
+  #   fixed_risk     : 손절까지 손실이 자본의 risk_pct가 되도록 (기관식 리스크 사이징)
+  sizing: fixed_fraction
+  risk_pct: 0.01           # fixed_risk에서 거래당 감수 리스크 (1%)

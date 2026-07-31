@@ -28,6 +28,7 @@ flowchart TB
   subgraph ENGINE["③ 엔진 레이어 (lookahead-safe) · src/engine"]
     E1["backtest.py<br/>이벤트 루프 · 워밍업·체결규율"]
     E2["position.py<br/>상태머신 FULL/HALF · 비용·슬리피지"]
+    E3["sizing.py<br/>fixed_fraction · fixed_risk"]
   end
 
   subgraph METRIC["④ 성과지표 · src/metrics.py"]

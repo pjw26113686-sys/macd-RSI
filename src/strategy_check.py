@@ -35,7 +35,7 @@ from src import strategies as strat
 from src.engine import backtest as _bt
 from src.engine.position import Costs
 from src.strategies.base import StrategySpec
-from src.validate import CONFIG_PATH, load_config, _load_data
+from src.validate import CONFIG_PATH, apply_sizing, load_config, _load_data
 from src.validation import cscv_pbo, deflated_sharpe_ratio, expand_grid, run_sweep
 from src.validation.report import format_validation_report
 from src.validation.sweep import walk_forward_analysis
@@ -195,7 +195,7 @@ def run_integrity_gauntlet(spec: StrategySpec, df: pd.DataFrame, costs: Costs,
 # --------------------------------------------------------------------------- #
 def run_performance(spec: StrategySpec, df: pd.DataFrame, symbol: str, bpy: int,
                     market: str, costs: Costs, bt_cfg: dict, args) -> str:
-    params_list = expand_grid(spec.default_params, spec.param_grid)
+    params_list = apply_sizing(expand_grid(spec.default_params, spec.param_grid), bt_cfg, args)
     sweep = run_sweep(
         df, params_list, costs, bars_per_year=bpy,
         initial_capital=bt_cfg["initial_capital"],
@@ -295,6 +295,10 @@ def main():
     ap.add_argument("--embargo", type=int, default=0)
     ap.add_argument("--no-wfa", action="store_true", help="워크포워드 생략")
     ap.add_argument("--no-perf", action="store_true", help="무결성 게이트만(성과 판정 생략)")
+    ap.add_argument("--sizing", choices=["fixed_fraction", "fixed_risk"], default=None,
+                    help="포지션 사이징 (기본: config backtest.sizing)")
+    ap.add_argument("--risk-pct", type=float, default=None, dest="risk_pct",
+                    help="fixed_risk의 거래당 리스크 비율")
     ap.add_argument("--config", default=str(CONFIG_PATH))
     args = ap.parse_args()
 

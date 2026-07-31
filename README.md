@@ -78,6 +78,29 @@ python -m src.strategy_check --category momentum --no-perf              # 무결
 게이트는 t시점 절단 재계산으로 미래 데이터 누수를 잡는다 —
 `tests/test_strategy_check.py`가 일부러 누수를 넣은 전략이 FAIL로 잡히는지 검증한다.
 
+## 포지션 사이징 (리스크 기반)
+
+전액 올인(`position_pct=1.0`) 대신 **거래당 리스크를 일정하게** 유지하는 기관식
+사이징을 지원한다. 엔진은 사이저 하나를 받아 수량만 다르게 잡으며, 미지정 시 기존
+전액 사이징과 **완전 동일**(회귀 안전망 `tests/test_sizing.py`).
+
+- `fixed_fraction` (기본) — 자본의 `position_pct`를 명목으로.
+- `fixed_risk` — 손절까지 닿았을 때 손실이 자본의 `risk_pct`(기본 1%)가 되도록.
+  단위리스크(진입가−손절가)가 작을수록 크게, 클수록 작게. 명목 상한은 `position_pct`.
+
+```bash
+python -m src.validate --strategy breakout_donchian --synthetic \
+    --sizing fixed_risk --risk-pct 0.01           # 거래당 1% 리스크
+```
+
+config `backtest.sizing`/`backtest.risk_pct`로 기본값을, CLI `--sizing/--risk-pct`로
+덮어쓴다. 새 사이저는 `src/engine/sizing.py`의 레지스트리에 함수 하나 추가하면 된다.
+
+## CI
+
+`.github/workflows/tests.yml` — push/PR마다 3개 파이썬 버전에서 전체 테스트(미래참조
+게이트 포함) + pyflakes + 검증 CLI 스모크를 자동 실행한다.
+
 ## 오버피팅 방어 (기관급 검증)
 
 단일 백테스트가 "좋아 보이는 것"이 우연/과최적화인지 판정한다. 여러 파라미터 설정을

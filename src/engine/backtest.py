@@ -21,6 +21,7 @@ import pandas as pd
 
 from src import signals_core
 from src.engine import position as pos
+from src.engine import sizing as _sizing
 
 
 @dataclass
@@ -73,12 +74,15 @@ def run_backtest(
     initial_capital: float = 10000.0,
     position_pct: float = 1.0,
     strategy=None,
+    sizer=None,
 ) -> BacktestResult:
     """OHLCV df(시간 오름차순)로 지표·신호를 계산한 뒤 백테스트.
 
     `strategy`가 None이면 기존 MACD+RSI 두뇌(signals_core)와 그 청산 컬럼을 쓴다.
     전략 객체(src.strategies.base.StrategySpec)를 주면 그 전략의 신호 생성기·청산
     컬럼·워밍업을 사용한다 — 엔진 체결/비용/상태머신 규율은 전략과 무관하게 동일.
+
+    `sizer`가 None이면 params["sizing"](미지정 시 fixed_fraction=기존 전액)으로 결정.
     """
     if strategy is None:
         sig = signals_core.add_signals(df, params)
@@ -93,7 +97,7 @@ def run_backtest(
         sig = sig.rename(columns={sig.columns[0]: "time"})
     return run_on_signals(
         sig, params, costs, initial_capital, position_pct,
-        exit_col=exit_col, exit_half_col=exit_half_col, warmup=warmup,
+        exit_col=exit_col, exit_half_col=exit_half_col, warmup=warmup, sizer=sizer,
     )
 
 
@@ -106,6 +110,7 @@ def run_on_signals(
     exit_col: str = "macd_dead_cross",
     exit_half_col: str = "rsi_exit_below_low",
     warmup: int | None = None,
+    sizer=None,
 ) -> BacktestResult:
     """이미 신호 컬럼이 계산된 프레임(`sig`)으로 백테스트.
 
@@ -114,10 +119,12 @@ def run_on_signals(
     `exit_col`     : 전량 신호청산 트리거 컬럼(기존 데드크로스에 해당).
     `exit_half_col`: 분할익절 후 잔량(HALF) 신호청산 트리거 컬럼(기존 RSI<50).
     `warmup`       : 진입 금지 워밍업 봉수. None이면 MACD+RSI 기준으로 계산.
+    `sizer`        : 포지션 사이저(src.engine.sizing 계약). None이면 params로 결정.
     """
     sig = sig.reset_index(drop=True)
     n = len(sig)
     warmup = _warmup_bars(params) if warmup is None else warmup
+    sizer = _sizing.from_params(params) if sizer is None else sizer
     M = params["swing_lookback_M"]
     lows = sig["low"].to_numpy()
 
@@ -146,7 +153,7 @@ def run_on_signals(
             swing_low = float(lows[max(0, t - M):t].min()) if t > 0 else float(lows[t])
             stop_loss, target, _ = pos.compute_stop_and_target(entry_fill, swing_low, params)
             if stop_loss < entry_fill:  # 유효한 손절폭만
-                qty = (cash * position_pct) / (entry_fill * (1.0 + costs.fee))
+                qty = sizer(cash, entry_fill, stop_loss, costs, position_pct, params)
                 if qty > 0:
                     cost = pos.buy_notional_cost(entry_fill, qty, costs)
                     cash -= cost
