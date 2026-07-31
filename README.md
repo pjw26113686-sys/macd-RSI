@@ -5,6 +5,8 @@ Ross Cameron 스타일로 포장된 MACD+RSI 1시간봉 모멘텀 전략의 **�
 작동하는지부터 검증한다. 상세 규칙은 `strategy_spec_v2.md`, 아키텍처는
 `implementation_architecture.md` 참조.
 
+> 📐 **전체 설계 구조도(레이어·전략계약·검증 파이프라인 mermaid): [`docs/architecture.md`](docs/architecture.md)**
+
 ## 설계 핵심
 
 - **두뇌는 하나(`src/signals_core.py`)** — 지표(MACD/Wilder RSI/HMA/거래량MA)와
