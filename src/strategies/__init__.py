@@ -14,10 +14,11 @@ from src.strategies.base import (
     register,
 )
 
-# 내장 전략 자동 등록 (import 시 register 실행).
-from src.strategies import breakout_donchian  # noqa: E402,F401
-from src.strategies import mean_reversion_bollinger  # noqa: E402,F401
-from src.strategies import momentum_macd_rsi  # noqa: E402,F401
+# 내장 전략 자동 등록 (import 시 register 실행). 부수효과 import이므로 모듈을
+# _BUILTINS로 참조해 의도를 명시(정적분석기가 "미사용"으로 오인하지 않게).
+from src.strategies import breakout_donchian, mean_reversion_bollinger, momentum_macd_rsi
+
+_BUILTINS = (breakout_donchian, mean_reversion_bollinger, momentum_macd_rsi)
 
 __all__ = [
     "StrategySpec",

@@ -71,10 +71,19 @@ def synthetic_ohlcv(n: int, seed: int = 7) -> pd.DataFrame:
     )
 
 
+def _bars_per_year(market: str) -> int:
+    return (_metrics.BARS_PER_YEAR_CRYPTO if market == "crypto"
+            else _metrics.BARS_PER_YEAR_STOCK)
+
+
 def _load_data(args, cfg):
-    """실데이터 캐시 → 없으면 합성으로 폴백. (df, symbol, bars_per_year, market) 반환."""
+    """실데이터 캐시 → 없으면 합성으로 폴백. (df, symbol, bars_per_year, market) 반환.
+
+    합성 데이터라도 --market의 비용·연환산은 존중한다(예: stock이면 stock 비용).
+    """
     if args.synthetic:
-        return synthetic_ohlcv(args.bars, seed=args.seed), "SYNTHETIC", _metrics.BARS_PER_YEAR_CRYPTO, "crypto"
+        return (synthetic_ohlcv(args.bars, seed=args.seed), "SYNTHETIC",
+                _bars_per_year(args.market), args.market)
 
     from src.data import cache
     d = cfg["data"][args.market]
@@ -83,13 +92,10 @@ def _load_data(args, cfg):
     if df is None:
         print(f"[!] {args.market}/{symbol} 캐시 없음 → 합성 데이터로 폴백 "
               f"(실데이터 검증은 외부망 환경에서 캐시 후 재실행).")
-        return synthetic_ohlcv(args.bars, seed=args.seed), "SYNTHETIC", \
-            (_metrics.BARS_PER_YEAR_CRYPTO if args.market == "crypto"
-             else _metrics.BARS_PER_YEAR_STOCK), args.market
+        return (synthetic_ohlcv(args.bars, seed=args.seed), "SYNTHETIC",
+                _bars_per_year(args.market), args.market)
     df = cache.validate_ohlcv(df, args.market)
-    bpy = (_metrics.BARS_PER_YEAR_CRYPTO if args.market == "crypto"
-           else _metrics.BARS_PER_YEAR_STOCK)
-    return df, symbol, bpy, args.market
+    return df, symbol, _bars_per_year(args.market), args.market
 
 
 def print_catalog():

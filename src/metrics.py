@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
 
 # 1시간봉 기준 연환산 계수 (24h*365 ≈ 8760). 주식 정규장(~6.5h*252)도 근사로 동일계수
 # 사용 시 왜곡되므로, bars_per_year를 시장별로 주입한다.

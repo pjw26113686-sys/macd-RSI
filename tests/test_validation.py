@@ -152,6 +152,38 @@ def test_run_sweep_returns_aligned_matrix():
     assert np.isfinite(res["returns"].to_numpy()).all()
 
 
+def test_walk_forward_analysis_survives_no_trade_strategy():
+    """어떤 설정도 거래 0건이면 전 폴드 Sharpe가 NaN → 예전엔 best_i=None 크래시.
+    회귀 방지: 폴드가 유효한 설정을 갖고 정상 반환해야 한다."""
+    from src.engine.position import Costs
+    from src.strategies.base import StrategySpec
+
+    def _never_enter(df, params):
+        out = df.copy()
+        out["enter_long"] = False
+        out["exit_all"] = False
+        out["exit_half"] = False
+        return out
+
+    spec = StrategySpec(
+        name="_no_trade", category="test", description="진입 없음",
+        default_params={"swing_lookback_M": 10, "stop_buffer": 0.001, "reward_ratio": 2.0},
+        param_grid={"reward_ratio": [1.5, 2.0]},
+        generate_signals=_never_enter, warmup_bars=lambda p: 5,
+        exit_col="exit_all", exit_half_col="exit_half",
+    )
+    df = random_walk_ohlcv(800, seed=13)
+    params_list = sweep.expand_grid(spec.default_params, spec.param_grid)
+    costs = Costs(fee=0.001, slippage=0.001, sell_tax=0.0)
+    res = sweep.walk_forward_analysis(
+        df, params_list, costs, bars_per_year=24 * 365, n_splits=3, strategy=spec,
+    )
+    assert res["n_folds"] == 3
+    for f in res["folds"]:
+        assert f["chosen_index"] is not None
+        assert f["chosen_params"] in params_list
+
+
 def test_walk_forward_analysis_runs_and_reports_degradation():
     from src.engine.position import Costs
     df = random_walk_ohlcv(1200, seed=12)

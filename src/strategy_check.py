@@ -31,12 +31,11 @@ import numpy as np
 import pandas as pd
 from pandas.api.types import is_bool_dtype
 
-from src import metrics as _metrics
 from src import strategies as strat
 from src.engine import backtest as _bt
 from src.engine.position import Costs
 from src.strategies.base import StrategySpec
-from src.validate import load_config, synthetic_ohlcv, _load_data
+from src.validate import CONFIG_PATH, load_config, _load_data
 from src.validation import cscv_pbo, deflated_sharpe_ratio, expand_grid, run_sweep
 from src.validation.report import format_validation_report
 from src.validation.sweep import walk_forward_analysis
@@ -296,7 +295,7 @@ def main():
     ap.add_argument("--embargo", type=int, default=0)
     ap.add_argument("--no-wfa", action="store_true", help="워크포워드 생략")
     ap.add_argument("--no-perf", action="store_true", help="무결성 게이트만(성과 판정 생략)")
-    ap.add_argument("--config", default=str(load_config.__defaults__[0]))
+    ap.add_argument("--config", default=str(CONFIG_PATH))
     args = ap.parse_args()
 
     ok = run(args)

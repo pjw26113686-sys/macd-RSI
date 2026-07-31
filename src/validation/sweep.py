@@ -166,10 +166,14 @@ def walk_forward_analysis(
         test_df = df.iloc[test_idx[0]: test_idx[-1] + 1]
 
         # 학습구간에서 최우수 설정 선택.
-        best_i, best_val, best_is_m = None, float("-inf"), None
+        # best_i는 0으로 초기화(모든 설정이 거래 0건이라 Sharpe가 전부 NaN→-inf여도
+        # 폴드가 유효한 설정을 갖도록 — None 인덱싱 크래시 방지).
+        best_i, best_val, best_is_m = 0, float("-inf"), None
         for i, params in enumerate(params_list):
             res = _run_one(train_df, params, costs, initial_capital, position_pct, strategy)
             m = _metrics.compute_metrics(res, bars_per_year=bars_per_year)
+            if best_is_m is None:
+                best_is_m = m  # 최소 한 설정(첫 설정)은 항상 채택되도록
             val = _select_metric_value(m, select_by)
             if val > best_val:
                 best_i, best_val, best_is_m = i, val, m
