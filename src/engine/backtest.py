@@ -72,13 +72,29 @@ def run_backtest(
     costs: pos.Costs,
     initial_capital: float = 10000.0,
     position_pct: float = 1.0,
+    strategy=None,
 ) -> BacktestResult:
-    """OHLCV df(시간 오름차순)로 지표·신호를 계산한 뒤 백테스트."""
-    sig = signals_core.add_signals(df, params)
+    """OHLCV df(시간 오름차순)로 지표·신호를 계산한 뒤 백테스트.
+
+    `strategy`가 None이면 기존 MACD+RSI 두뇌(signals_core)와 그 청산 컬럼을 쓴다.
+    전략 객체(src.strategies.base.StrategySpec)를 주면 그 전략의 신호 생성기·청산
+    컬럼·워밍업을 사용한다 — 엔진 체결/비용/상태머신 규율은 전략과 무관하게 동일.
+    """
+    if strategy is None:
+        sig = signals_core.add_signals(df, params)
+        exit_col, exit_half_col = "macd_dead_cross", "rsi_exit_below_low"
+        warmup = _warmup_bars(params)
+    else:
+        sig = strategy.generate_signals(df, params)
+        exit_col, exit_half_col = strategy.exit_col, strategy.exit_half_col
+        warmup = strategy.warmup_bars(params)
     sig = sig.reset_index(drop=False)
     if "time" not in sig.columns:
         sig = sig.rename(columns={sig.columns[0]: "time"})
-    return run_on_signals(sig, params, costs, initial_capital, position_pct)
+    return run_on_signals(
+        sig, params, costs, initial_capital, position_pct,
+        exit_col=exit_col, exit_half_col=exit_half_col, warmup=warmup,
+    )
 
 
 def run_on_signals(
@@ -87,15 +103,21 @@ def run_on_signals(
     costs: pos.Costs,
     initial_capital: float = 10000.0,
     position_pct: float = 1.0,
+    exit_col: str = "macd_dead_cross",
+    exit_half_col: str = "rsi_exit_below_low",
+    warmup: int | None = None,
 ) -> BacktestResult:
     """이미 신호 컬럼이 계산된 프레임(`sig`)으로 백테스트.
 
-    `sig`는 open/high/low/close/volume + signals_core.SIGNAL_COLUMNS + 'time'
-    컬럼을 가진 RangeIndex DataFrame이어야 한다. (테스트에서 신호를 직접 주입할 때 사용)
+    `sig`는 open/high/low/close/volume + 'enter_long' + 청산 컬럼(`exit_col`,
+    `exit_half_col`) + 'time'을 가진 DataFrame이어야 한다.
+    `exit_col`     : 전량 신호청산 트리거 컬럼(기존 데드크로스에 해당).
+    `exit_half_col`: 분할익절 후 잔량(HALF) 신호청산 트리거 컬럼(기존 RSI<50).
+    `warmup`       : 진입 금지 워밍업 봉수. None이면 MACD+RSI 기준으로 계산.
     """
     sig = sig.reset_index(drop=True)
     n = len(sig)
-    warmup = _warmup_bars(params)
+    warmup = _warmup_bars(params) if warmup is None else warmup
     M = params["swing_lookback_M"]
     lows = sig["low"].to_numpy()
 
@@ -137,7 +159,9 @@ def run_on_signals(
 
         # ---- 3) 보유 포지션 봉내 관리 ----
         if position is not None:
-            cash_delta, status = _manage_open_bar(position, row, costs, t, trades)
+            cash_delta, status = _manage_open_bar(
+                position, row, costs, t, trades, exit_col, exit_half_col
+            )
             cash += cash_delta
             if status == "closed":
                 position = None
@@ -199,7 +223,10 @@ def _evaluate_entry(row, setup, t: int, params: dict):
 # 봉내 포지션 관리 — 반환 (cash_delta, status)
 # status: 'closed' | 'signal_pending' | 'hold'
 # --------------------------------------------------------------------------- #
-def _manage_open_bar(position: pos.Position, row, costs: pos.Costs, t: int, trades: list):
+def _manage_open_bar(
+    position: pos.Position, row, costs: pos.Costs, t: int, trades: list,
+    exit_col: str = "macd_dead_cross", exit_half_col: str = "rsi_exit_below_low",
+):
     o, h, l = row["open"], row["high"], row["low"]
     cash_delta = 0.0
 
@@ -218,11 +245,11 @@ def _manage_open_bar(position: pos.Position, row, costs: pos.Costs, t: int, trad
         position.stop_loss = position.entry_price  # 본전 보존
         # 같은 봉에서 신호청산도 이어 점검 (아래)
 
-    # (c) 신호청산: 데드크로스(전량, 모든 상태) / RSI<50(HALF 잔량) — 종가 확정 → 다음봉 시가
-    dead = bool(row["macd_dead_cross"])
-    rsi_exit = bool(row["rsi_exit_below_low"]) and position.state == pos.HALF
+    # (c) 신호청산: exit_col(전량, 모든 상태) / exit_half_col(HALF 잔량) — 종가 확정 → 다음봉 시가
+    dead = bool(row[exit_col])
+    rsi_exit = bool(row[exit_half_col]) and position.state == pos.HALF
     if dead or rsi_exit:
-        position.trade.last_reason = "DEAD_CROSS" if dead else "RSI_EXIT"
+        position.trade.last_reason = "EXIT_SIGNAL" if dead else "EXIT_HALF"
         return cash_delta, "signal_pending"
 
     return cash_delta, "hold"

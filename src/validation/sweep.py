@@ -48,12 +48,16 @@ def expand_grid(base_params: dict, grid: dict) -> list[dict]:
 # --------------------------------------------------------------------------- #
 def _run_one(
     df: pd.DataFrame, params: dict, costs: Costs,
-    initial_capital: float, position_pct: float,
+    initial_capital: float, position_pct: float, strategy=None,
 ):
-    """한 설정을 백테스트하고 BacktestResult를 반환. 백엔드 교체 시 이 함수만 바꾼다."""
+    """한 설정을 백테스트하고 BacktestResult를 반환. 백엔드 교체 시 이 함수만 바꾼다.
+
+    strategy=None이면 기본 MACD+RSI 두뇌, StrategySpec을 주면 그 전략으로 백테스트.
+    (vectorbt 등 고속 백엔드는 여기서 분기해 갈아끼운다.)
+    """
     return _bt.run_backtest(
         df, params, costs,
-        initial_capital=initial_capital, position_pct=position_pct,
+        initial_capital=initial_capital, position_pct=position_pct, strategy=strategy,
     )
 
 
@@ -72,6 +76,7 @@ def run_sweep(
     bars_per_year: int,
     initial_capital: float = 10000.0,
     position_pct: float = 1.0,
+    strategy=None,
 ) -> dict:
     """설정 리스트를 전기간 백테스트해 검증 입력을 만든다.
 
@@ -91,7 +96,7 @@ def run_sweep(
     sr_trials: list[float] = []
 
     for i, params in enumerate(params_list):
-        res = _run_one(df, params, costs, initial_capital, position_pct)
+        res = _run_one(df, params, costs, initial_capital, position_pct, strategy)
         rets = _bar_returns(res)
         ret_cols[i] = rets.reset_index(drop=True)
         metric_rows.append(_metrics.compute_metrics(res, bars_per_year=bars_per_year))
@@ -128,6 +133,7 @@ def walk_forward_analysis(
     select_by: str = "Sharpe",
     initial_capital: float = 10000.0,
     position_pct: float = 1.0,
+    strategy=None,
 ) -> dict:
     """워크포워드: 각 폴드에서 IS 최우수 설정을 뽑아 OOS로만 평가.
 
@@ -162,7 +168,7 @@ def walk_forward_analysis(
         # 학습구간에서 최우수 설정 선택.
         best_i, best_val, best_is_m = None, float("-inf"), None
         for i, params in enumerate(params_list):
-            res = _run_one(train_df, params, costs, initial_capital, position_pct)
+            res = _run_one(train_df, params, costs, initial_capital, position_pct, strategy)
             m = _metrics.compute_metrics(res, bars_per_year=bars_per_year)
             val = _select_metric_value(m, select_by)
             if val > best_val:
@@ -170,7 +176,7 @@ def walk_forward_analysis(
 
         # 선택 설정을 검증구간에서만 평가.
         oos_res = _run_one(
-            test_df, params_list[best_i], costs, initial_capital, position_pct
+            test_df, params_list[best_i], costs, initial_capital, position_pct, strategy
         )
         oos_m = _metrics.compute_metrics(oos_res, bars_per_year=bars_per_year)
 

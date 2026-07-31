@@ -23,21 +23,44 @@ src/engine/position.py  포지션 상태머신 + 체결/비용 헬퍼
 src/engine/backtest.py  이벤트 루프 (run_backtest / run_on_signals)
 src/data/{crypto,stocks,cache}.py   ccxt / yfinance 수집 + parquet 캐시
 src/metrics.py          CAGR/MDD/Sharpe/승률/실현손익비 등
+src/strategies/         [카테고리별 전략 레지스트리] momentum/mean_reversion/breakout
 src/validation/         [오버피팅 방어] 워크포워드·purged K-fold·CSCV PBO·Deflated Sharpe
 src/run.py              단일 백테스트 CLI 진입점
-src/validate.py         오버피팅 검증 CLI (스윕 → PBO/DSR/워크포워드 판정카드)
-tests/                  lookahead / signals / engine / validation 검증
+src/validate.py         오버피팅 검증 CLI (전략/카테고리별 스윕 → PBO/DSR/워크포워드 판정카드)
+tests/                  lookahead / signals / engine / validation / strategies 검증
 freqtrade/              독립 검증용 전략·설정 (signals_core 공유 → freqtrade/README.md)
 scripts/                parquet→freqtrade 변환, 자체엔진 vs freqtrade 교차비교
 ```
 
+## 카테고리별 전략 (플러그인)
+
+전략은 카테고리(momentum/mean_reversion/breakout/…)에 속하는 자족 모듈이며, 동일한
+계약(lookahead-safe `enter_long` + 청산 컬럼 산출)을 따르므로 **어떤 전략이든 같은
+엔진·검증 레이어로 돌아간다**. 새 전략은 `src/strategies/`에 모듈 하나 추가하고
+`register()`하면 즉시 스윕·검증 대상이 된다.
+
+```bash
+python -m src.validate --list                       # 등록된 카테고리·전략 목록
+python -m src.validate --strategy breakout_donchian --synthetic
+python -m src.validate --category mean_reversion --synthetic   # 카테고리 전체 검증
+```
+
+- **momentum** — `momentum_macd_rsi`: MACD 골든크로스 + Wilder RSI (기존 두뇌 이식).
+- **mean_reversion** — `mean_reversion_bollinger`: 볼린저 하단 이탈 후 복귀, 중심선 회귀 청산.
+- **breakout** — `breakout_donchian`: 직전 N봉 고점 돌파, M봉 저점 이탈 청산(터틀 계열).
+
+각 전략은 자체 `default_params`·`param_grid`(스윕 범위)를 갖고, 엔진 공통 손절/목표
+(swing-low stop + reward_ratio)를 재사용한다. `tests/test_strategies.py`가 모든
+전략에 대해 미래참조 0·엔진연동·PBO 산출을 자동으로 강제한다.
+
 ## 오버피팅 방어 (기관급 검증)
 
 단일 백테스트가 "좋아 보이는 것"이 우연/과최적화인지 판정한다. 여러 파라미터 설정을
-스윕한 뒤, 다중검정 편향까지 반영해 세 축으로 신호등(신뢰/주의/기각)을 낸다.
+스윕한 뒤, 다중검정 편향까지 반영해 세 축으로 신호등(신뢰/주의/기각)을 낸다. 위의
+어떤 카테고리 전략에도 `--strategy`/`--category`로 동일하게 적용된다.
 
 ```bash
-python -m src.validate --synthetic --bars 3000     # 합성 데이터 데모(네트워크 불필요)
+python -m src.validate --synthetic --bars 3000     # 기본 전략(momentum) 데모(네트워크 불필요)
 python -m src.validate --market crypto              # 캐시 있으면 실데이터, 없으면 합성 폴백
 python -m src.validate --market stock --blocks 12 --folds 6 --wf-mode anchored
 ```
@@ -100,7 +123,8 @@ python scripts/compare_engines.py                           # 진입 Jaccard ≈
 
 ## 비범위 (2차 백로그)
 
-전략 B(RSI 다이버전스), `hist_turn_up` 진입결합 A/B, 유니버스 확장(생존편향·호출제한),
-hyperopt, freqtrade 암호화폐 라이브, 포지션 사이징, 한국주식, vectorbt 고속 스윕 백엔드,
-일반인용 Streamlit UI.
-(✅ 완료: grid search 스윕 + walk-forward/OOS + 오버피팅 방어 — `src/validation/`)
+`hist_turn_up` 진입결합 A/B, 유니버스 확장(생존편향·호출제한), hyperopt,
+freqtrade 암호화폐 라이브, 포지션 사이징(변동성 타겟팅·켈리), 한국주식,
+vectorbt 고속 스윕 백엔드, 일반인용 Streamlit UI.
+(✅ 완료: 카테고리별 전략 레지스트리 — `src/strategies/` · grid search 스윕 +
+ walk-forward/OOS + 오버피팅 방어 — `src/validation/`)

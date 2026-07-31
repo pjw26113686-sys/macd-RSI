@@ -23,20 +23,13 @@ import pandas as pd
 import yaml
 
 from src import metrics as _metrics
+from src import strategies as strat
 from src.engine.position import Costs
 from src.validation import cscv_pbo, deflated_sharpe_ratio, expand_grid, run_sweep
 from src.validation.report import format_validation_report
 from src.validation.sweep import walk_forward_analysis
 
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "params.yaml"
-
-# 데모/스윕용 기본 그리드. 24개 설정 → CSCV 순위매김에 충분.
-DEFAULT_GRID = {
-    "macd_fast": [8, 12],
-    "rsi_period": [7, 9, 14],
-    "hma_period": [50, 100],
-    "rsi_entry_low": [45, 50],
-}
 
 
 def load_config(path: Path = CONFIG_PATH) -> dict:
@@ -99,49 +92,80 @@ def _load_data(args, cfg):
     return df, symbol, bpy, args.market
 
 
-def run_validation(args):
-    cfg = load_config(Path(args.config))
-    df, symbol, bpy, market = _load_data(args, cfg)
+def print_catalog():
+    """등록된 카테고리·전략 목록 출력."""
+    print("등록된 전략 (카테고리별):")
+    for cat in strat.categories():
+        print(f"\n  [{cat}]")
+        for s in strat.by_category(cat):
+            print(f"    - {s.name:26s} {s.description}")
+    print("\n사용: python -m src.validate --strategy <name> [--synthetic]")
+    print("      python -m src.validate --category <category> [--synthetic]")
 
-    base = cfg["strategy"]
-    cost_cfg = cfg["costs"][market]
-    costs = Costs(fee=cost_cfg["fee"], slippage=cost_cfg["slippage"],
-                  sell_tax=cost_cfg.get("sell_tax", 0.0))
-    bt = cfg["backtest"]
-    params_list = expand_grid(base, DEFAULT_GRID)
 
-    print(f"[i] {symbol} · {len(df)}봉 · 설정 {len(params_list)}개 스윕 시작 …")
+def validate_spec(spec, df, symbol, bpy, market, costs, bt, args):
+    """한 전략 스펙을 스윕→PBO/DSR/워크포워드로 검증하고 판정카드를 출력."""
+    params_list = expand_grid(spec.default_params, spec.param_grid)
+    print(f"\n[i] {spec.name} ({spec.category}) · {symbol} · {len(df)}봉 · "
+          f"설정 {len(params_list)}개 스윕 …")
     sweep = run_sweep(
         df, params_list, costs, bars_per_year=bpy,
         initial_capital=bt["initial_capital"], position_pct=bt["position_pct"],
+        strategy=spec,
     )
-
     pbo_res = cscv_pbo(sweep["returns"].to_numpy(), n_blocks=args.blocks)
 
-    # DSR: 스윕 최우수(관측 Sharpe 최대) 설정의 수익률에 다중검정 보정.
     best_i = int(np.argmax(sweep["sr_trials"]))
     dsr_res = deflated_sharpe_ratio(
-        sweep["returns"].iloc[:, best_i].to_numpy(),
-        sr_trials=sweep["sr_trials"],
+        sweep["returns"].iloc[:, best_i].to_numpy(), sr_trials=sweep["sr_trials"],
     )
 
     wfa_res = None
     if not args.no_wfa:
-        print(f"[i] 워크포워드 {args.folds}폴드 재최적화 분석 …")
         wfa_res = walk_forward_analysis(
             df, params_list, costs, bars_per_year=bpy,
             n_splits=args.folds, mode=args.wf_mode, embargo=args.embargo,
             initial_capital=bt["initial_capital"], position_pct=bt["position_pct"],
+            strategy=spec,
         )
 
-    title = f"{market.upper()}·{symbol}"
-    print()
+    title = f"{spec.category}/{spec.name}·{market.upper()}·{symbol}"
     print(format_validation_report(title, pbo_res, dsr_res, wfa_res))
     return pbo_res, dsr_res, wfa_res
 
 
+def run_validation(args):
+    cfg = load_config(Path(args.config))
+    df, symbol, bpy, market = _load_data(args, cfg)
+
+    cost_cfg = cfg["costs"][market]
+    costs = Costs(fee=cost_cfg["fee"], slippage=cost_cfg["slippage"],
+                  sell_tax=cost_cfg.get("sell_tax", 0.0))
+    bt = cfg["backtest"]
+
+    if args.category:
+        specs = strat.by_category(args.category)
+        if not specs:
+            raise SystemExit(f"미등록 카테고리: {args.category!r}. "
+                             f"가능: {strat.categories()}")
+    else:
+        specs = [strat.get(args.strategy)]
+
+    results = {}
+    for spec in specs:
+        results[spec.name] = validate_spec(
+            spec, df, symbol, bpy, market, costs, bt, args
+        )
+    return results
+
+
 def main():
     ap = argparse.ArgumentParser(description="오버피팅 검증(PBO/DSR/워크포워드)")
+    ap.add_argument("--strategy", default="momentum_macd_rsi",
+                    help="검증할 전략 이름 (기본: momentum_macd_rsi)")
+    ap.add_argument("--category", default=None,
+                    help="카테고리 전체 검증 (momentum/mean_reversion/breakout)")
+    ap.add_argument("--list", action="store_true", help="등록된 전략 목록 출력 후 종료")
     ap.add_argument("--market", choices=["crypto", "stock"], default="crypto")
     ap.add_argument("--synthetic", action="store_true", help="합성 데이터 강제 사용")
     ap.add_argument("--bars", type=int, default=3000, help="합성 데이터 봉 수")
@@ -153,6 +177,10 @@ def main():
     ap.add_argument("--no-wfa", action="store_true", help="워크포워드 생략(PBO/DSR만)")
     ap.add_argument("--config", default=str(CONFIG_PATH))
     args = ap.parse_args()
+
+    if args.list:
+        print_catalog()
+        return
     run_validation(args)
 
 
