@@ -23,11 +23,12 @@ src/engine/position.py  포지션 상태머신 + 체결/비용 헬퍼
 src/engine/backtest.py  이벤트 루프 (run_backtest / run_on_signals)
 src/data/{crypto,stocks,cache}.py   ccxt / yfinance 수집 + parquet 캐시
 src/metrics.py          CAGR/MDD/Sharpe/승률/실현손익비 등
-src/strategies/         [카테고리별 전략 레지스트리] momentum/mean_reversion/breakout
+src/strategies/         [카테고리별 전략 레지스트리] momentum/mean_reversion/breakout + _template.py
 src/validation/         [오버피팅 방어] 워크포워드·purged K-fold·CSCV PBO·Deflated Sharpe
 src/run.py              단일 백테스트 CLI 진입점
 src/validate.py         오버피팅 검증 CLI (전략/카테고리별 스윕 → PBO/DSR/워크포워드 판정카드)
-tests/                  lookahead / signals / engine / validation / strategies 검증
+src/strategy_check.py   [전략 합격 판정 하네스] 무결성 게이트 + 성과 판정 (임의 .py 로드)
+tests/                  lookahead / signals / engine / validation / strategies / harness 검증
 freqtrade/              독립 검증용 전략·설정 (signals_core 공유 → freqtrade/README.md)
 scripts/                parquet→freqtrade 변환, 자체엔진 vs freqtrade 교차비교
 ```
@@ -52,6 +53,28 @@ python -m src.validate --category mean_reversion --synthetic   # 카테고리 �
 각 전략은 자체 `default_params`·`param_grid`(스윕 범위)를 갖고, 엔진 공통 손절/목표
 (swing-low stop + reward_ratio)를 재사용한다. `tests/test_strategies.py`가 모든
 전략에 대해 미래참조 0·엔진연동·PBO 산출을 자동으로 강제한다.
+
+### 새 전략 가져와 검증하기 (합격 판정 하네스)
+
+전략을 하나 만들면 `strategy_check`가 **한 번의 명령으로** 무결성 게이트(신호 계약 →
+미래참조 0 → 결정성 → 엔진 연동 → 스윕 가능)를 통과하는지 판정하고, 이어서 오버피팅
+성과 판정카드를 낸다. 레지스트리 등록 없이 **임의의 .py 파일도** 바로 검증된다.
+
+```bash
+# 1) 템플릿 복사 후 generate_signals 구현
+cp src/strategies/_template.py src/strategies/my_strategy.py
+
+# 2) 가져온 전략을 그 자리에서 검증 (등록 불필요)
+python -m src.strategy_check --module src/strategies/my_strategy.py --synthetic
+python -m src.strategy_check --strategy breakout_donchian --synthetic   # 등록된 전략도 동일
+python -m src.strategy_check --category momentum --no-perf              # 무결성 게이트만
+
+# 3) 무결성 통과하면 src/strategies/__init__.py에 import 추가 → 정식 등록
+```
+
+무결성 게이트가 하나라도 FAIL이면 exit code 1(성과 판정은 생략). 특히 **미래참조 0**
+게이트는 t시점 절단 재계산으로 미래 데이터 누수를 잡는다 —
+`tests/test_strategy_check.py`가 일부러 누수를 넣은 전략이 FAIL로 잡히는지 검증한다.
 
 ## 오버피팅 방어 (기관급 검증)
 
